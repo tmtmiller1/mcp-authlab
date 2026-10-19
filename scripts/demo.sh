@@ -13,8 +13,8 @@ pid=$!
 for _ in $(seq 1 50); do [ -s "$work/token" ] && break; sleep 0.1; done
 url="http://127.0.0.1:$port/mcp"
 # Profiles without dynamic registration accept any client_id, which is what --client-id is for.
-if python3 -m mcp_authlab login "$url" --no-browser --no-color >"$work/login.txt" 2>&1 \
-   || python3 -m mcp_authlab login "$url" --no-browser --no-color --client-id demo-client >"$work/login.txt" 2>&1; then
+login() { python3 -m mcp_authlab login "$url" --no-browser --no-color --timeout 10 "$@" >"$work/login.txt" 2>&1; }
+if login || { grep -q "no dynamic registration" "$work/login.txt" && login --client-id demo-client; }; then
   python3 -m mcp_authlab scan "$url" "$@"
 else
   echo "login unavailable for profile $profile ($(tail -1 "$work/login.txt")); scanning with minted tokens" >&2
