@@ -160,7 +160,7 @@ scripts/demo.sh passthrough
 
 ## Field notes
 
-Unauthenticated scans of public endpoints on 2026-10-19, so each line covers 19 of 33 checks and the critical checks `TOK-03` and `SESS-01` were skipped. The [registry](registry/README.md) rescans these every Monday.
+Unauthenticated scans of public endpoints on 2026-10-19, so each line covers 19 of 33 checks and the critical checks `TOK-03` and `SESS-01` were skipped. `python3 registry/scan.py` reruns them and rewrites the [registry](registry/README.md) table.
 
 - **Linear** `coverage 19/33 · critical checks not run: TOK-03, SESS-01`: Conformant, A. Every check that ran passed.
 - **Notion** `coverage 19/33 · critical checks not run: TOK-03, SESS-01`: Conformant, A. Every check that ran passed.

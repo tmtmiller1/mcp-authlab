@@ -10,7 +10,7 @@
 - The headline is now a conformance level (Unsafe, Non-conformant, Conformant with warnings, Conformant) read straight from the spec's MUST and SHOULD language. The letter grade stays as the CI knob; `docs/grading.md` shows how to recompute both by hand.
 - `--policy file.toml` lets a team set its own bar: `fail_under`, `ignore` and `downgrade`. Ignored checks still run and print. ORIG-01 and VER-01 now carry a note on why operators dispute them; they stay MUST.
 - `--format sarif` for GitHub code scanning, and a JSON schema for the report at `docs/report.schema.json`.
-- `registry/`: a list of public MCP endpoints scanned unauthenticated every Monday by GitHub Actions, with results committed to the repo.
+- `registry/`: a list of public MCP endpoints and a script that scans them unauthenticated and writes the results and a summary table.
 - The fixture grew a small authorization server with consent, PKCE, resource indicators and refresh tokens, plus eight new defect flags and a `stateless` flag. Several fixtures can run in one process.
 - `WWW-Authenticate` parsing follows the RFC 9110 grammar: several challenges per header, token68, commas inside quoted strings, escaped quotes.
 - `mcp-authlab logout <url>` forgets stored tokens.

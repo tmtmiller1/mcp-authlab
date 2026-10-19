@@ -1,6 +1,6 @@
 # Public MCP endpoint registry
 
-Scanned 2026-10-19 with mcp-authlab 0.2.0. Unauthenticated scans only: the tool sends a handful of requests (an unauthenticated initialize, the metadata documents, two invalid tokens) and doesn't log in. It runs every Monday from GitHub Actions. If your server is listed and you want it removed or a finding corrected, [open an issue](https://github.com/tmtmiller1/mcp-authlab/issues).
+Scanned 2026-10-19 with mcp-authlab 0.2.0. Unauthenticated scans only: the tool sends a handful of requests (an unauthenticated initialize, the metadata documents, two invalid tokens) and doesn't log in. The scan is run by hand from time to time. If your server is listed and you want it removed or a finding corrected, [open an issue](https://github.com/tmtmiller1/mcp-authlab/issues/new?template=registry.yml).
 
 | Server | Level | Grade | Coverage | Findings |
 |---|---|---|---|---|
