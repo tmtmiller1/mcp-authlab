@@ -1,0 +1,25 @@
+name: Registry removal or correction
+description: Ask for a server to be taken off the public registry, or for a finding to be corrected.
+labels: [registry]
+body:
+  - type: input
+    id: endpoint
+    attributes:
+      label: Endpoint URL
+    validations:
+      required: true
+  - type: dropdown
+    id: request
+    attributes:
+      label: Request
+      options:
+        - Remove this server from the registry
+        - Correct a finding
+        - Add a server I operate
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: For a correction, the check ID and what the server does. For a removal, a reason helps but isn't required.

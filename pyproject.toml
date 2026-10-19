@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,7 @@ version = "0.2.0"
 description = "Conformance scanner for MCP server authorization (OAuth 2.1, RFC 9728, RFC 8414, RFC 8707). Logs in, scans a live server, grades it, fails CI."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "tmtmiller" }]
 keywords = ["mcp", "model-context-protocol", "oauth", "security", "conformance", "rfc9728", "authorization"]
@@ -16,7 +17,13 @@ classifiers = [
   "Environment :: Console",
   "Intended Audience :: Developers",
   "Intended Audience :: Information Technology",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Security",
   "Topic :: Software Development :: Testing",
 ]
@@ -25,6 +32,8 @@ dependencies = []
 [project.urls]
 Homepage = "https://github.com/tmtmiller1/mcp-authlab"
 Issues = "https://github.com/tmtmiller1/mcp-authlab/issues"
+Changelog = "https://github.com/tmtmiller1/mcp-authlab/blob/main/CHANGELOG.md"
+Source = "https://github.com/tmtmiller1/mcp-authlab"
 
 [project.scripts]
 mcp-authlab = "mcp_authlab.cli:main"

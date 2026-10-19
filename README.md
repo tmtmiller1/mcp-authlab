@@ -1,5 +1,10 @@
 # mcp-authlab
 
+[![ci](https://github.com/tmtmiller1/mcp-authlab/actions/workflows/ci.yml/badge.svg)](https://github.com/tmtmiller1/mcp-authlab/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
+[![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Tests whether an [MCP](https://modelcontextprotocol.io) server refuses the tokens it should refuse. Most MCP auth scanners read the discovery documents and stop there. mcp-authlab logs in to the server's authorization server, mints real tokens, and then attacks the resource server with them: an unsigned token, a token issued for a different service, a session ID with no token at all. Every finding cites the line of the spec it enforces.
 
 ```
@@ -57,10 +62,10 @@ Those three checks (TOK-02, TOK-03 and SESS-01, marked `MUST*`) are critical. On
 ## Install
 
 ```
-pipx install git+https://github.com/tmtmiller1/mcp-authlab
+pipx install git+https://github.com/tmtmiller1/mcp-authlab@v0.2.0
 ```
 
-or `pip install -e .` from a checkout. Python 3.11 or newer is the whole requirement.
+or install the wheel from the [latest release](https://github.com/tmtmiller1/mcp-authlab/releases/latest), or `pip install -e .` from a checkout. Python 3.11 or newer is the whole requirement.
 
 ## Use
 
@@ -202,6 +207,10 @@ ruff check src tests && ruff format --check src tests && mypy src
 ```
 
 The tests start each fixture profile on a random port, log in to it with `--no-browser`, scan it in-process, and assert the flagged set equals the profile's declared defects. The suite runs in about six seconds. Adding a check means adding it to `catalog.CATALOG`, implementing it in `scanner.Scanner` (or `oauthclient.Login` for the authorization server), breaking it in a fixture profile, declaring that in `EXPECTED_FAILURES`, and regenerating `docs/checks.md` with `mcp-authlab checks --markdown`. A test fails when that file is stale. [CHANGELOG.md](CHANGELOG.md) lists what changed in each release.
+
+## Contributing and security
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers running the tests and adding a check. To report a vulnerability in mcp-authlab itself, see [SECURITY.md](SECURITY.md). To have a server taken off the registry or a finding corrected, [open a registry issue](https://github.com/tmtmiller1/mcp-authlab/issues/new?template=registry.yml).
 
 ## License
 

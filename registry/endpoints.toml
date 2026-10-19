@@ -1,5 +1,5 @@
 # Public MCP endpoints the weekly registry scan covers, unauthenticated only.
-# To be removed or corrected, open an issue: https://github.com/tmtmiller1/mcp-authlab/issues
+# To be removed or corrected, open an issue: https://github.com/tmtmiller1/mcp-authlab/issues/new?template=registry.yml
 
 [[endpoint]]
 name = "Linear"

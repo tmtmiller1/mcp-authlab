@@ -1,7 +1,9 @@
 # Gate a deployment on the authorization grade of a staging MCP server, and send the findings to code scanning.
-# Run `mcp-authlab login https://mcp.staging.example.com/mcp` once on a workstation and copy the entry from
+# Run `mcp-authlab login https://mcp.staging.example.com/mcp` once on a workstation and paste the contents of
 # ~/.config/mcp-authlab/tokens.json into the MCP_AUTHLAB_TOKENS_JSON secret: the job then runs every check,
 # including the three critical ones. Without that secret the scan runs the unauthenticated checks only.
+# Refresh tokens rotate, so the stored one works for one refresh. When the report says the token has
+# expired, log in again and update the secret.
 name: mcp-auth-conformance
 on:
   workflow_dispatch:
@@ -13,20 +15,21 @@ permissions:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    env:
+      # Secrets can't appear in an `if:`, so expose this one as an env var and test that instead.
+      TOKENS: ${{ secrets.MCP_AUTHLAB_TOKENS_JSON }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install git+https://github.com/tmtmiller1/mcp-authlab
+      - run: pip install git+https://github.com/tmtmiller1/mcp-authlab@v0.2.0
       - name: restore stored tokens
-        if: ${{ secrets.MCP_AUTHLAB_TOKENS_JSON != '' }}
+        if: env.TOKENS != ''
         run: |
-          mkdir -p ~/.config/mcp-authlab
+          mkdir -p -m 700 ~/.config/mcp-authlab
           printf '%s' "$TOKENS" > ~/.config/mcp-authlab/tokens.json
           chmod 600 ~/.config/mcp-authlab/tokens.json
-        env:
-          TOKENS: ${{ secrets.MCP_AUTHLAB_TOKENS_JSON }}
       - run: mcp-authlab scan https://mcp.staging.example.com/mcp --policy authlab.toml --format markdown -o report.md
       - if: always()
         run: cat report.md >> "$GITHUB_STEP_SUMMARY"
