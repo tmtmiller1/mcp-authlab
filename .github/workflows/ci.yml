@@ -14,6 +14,19 @@ jobs:
       - run: ruff check src tests
       - run: ruff format --check src tests
       - run: mypy src
+  demo-from-checkout:
+    # What the README tells people to do: clone, then run the demo, with nothing installed.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: |
+          scripts/demo.sh passthrough --no-color > passthrough.txt || true
+          cat passthrough.txt
+          grep -q "^level    Unsafe   grade F" passthrough.txt
+          scripts/demo.sh reference --fail-under A --no-color
   test:
     runs-on: ubuntu-latest
     strategy:

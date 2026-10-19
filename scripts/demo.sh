@@ -5,12 +5,20 @@
 set -euo pipefail
 profile="${1:-reference}"; shift || true
 port="${PORT:-8765}"
+# Run the code in this checkout, so the demo works straight after `git clone`.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+export PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}"
+py="${PYTHON:-python3}"
+if ! "$py" -c 'import sys; sys.exit(sys.version_info < (3, 11))' 2>/dev/null; then
+  echo "mcp-authlab needs Python 3.11 or newer; $py is $("$py" --version 2>&1). Set PYTHON to a newer one." >&2
+  exit 1
+fi
 work="$(mktemp -d)"
 # Keep the scan's exit status: under set -e, a failing command inside the trap would replace it.
 cleanup() { status=$?; kill "${pid:-}" 2>/dev/null || true; wait "${pid:-}" 2>/dev/null || true; rm -rf "$work"; exit "$status"; }
 trap cleanup EXIT
 export MCP_AUTHLAB_TOKENS="$work/tokens.json"
-python3 -m mcp_authlab fixture --profile "$profile" --port "$port" --auto-consent --print-token >"$work/token" 2>"$work/fixture.err" &
+"$py" -m mcp_authlab fixture --profile "$profile" --port "$port" --auto-consent --print-token >"$work/token" 2>"$work/fixture.err" &
 pid=$!
 for _ in $(seq 1 50); do [ -s "$work/token" ] && break; sleep 0.1; done
 if [ ! -s "$work/token" ]; then
@@ -20,12 +28,12 @@ if [ ! -s "$work/token" ]; then
 fi
 url="http://127.0.0.1:$port/mcp"
 # Profiles that skip dynamic registration accept any client_id, which is what --client-id is for.
-login() { python3 -m mcp_authlab login "$url" --no-browser --no-color --timeout 10 "$@" >"$work/login.txt" 2>&1; }
+login() { "$py" -m mcp_authlab login "$url" --no-browser --no-color --timeout 10 "$@" >"$work/login.txt" 2>&1; }
 if login || { grep -q "offer dynamic registration" "$work/login.txt" && login --client-id demo-client; }; then
-  python3 -m mcp_authlab scan "$url" "$@"
+  "$py" -m mcp_authlab scan "$url" "$@"
 else
   echo "login unavailable for profile $profile ($(tail -1 "$work/login.txt")); scanning with minted tokens" >&2
   token="$(head -1 "$work/token")"
   foreign="$(curl -s "http://127.0.0.1:$port/dev/token?aud=https://other.example/mcp")"
-  python3 -m mcp_authlab scan "$url" --token "$token" --foreign-token "$foreign" "$@"
+  "$py" -m mcp_authlab scan "$url" --token "$token" --foreign-token "$foreign" "$@"
 fi

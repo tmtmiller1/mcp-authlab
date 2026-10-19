@@ -4,6 +4,7 @@
 # including the three critical ones. Without that secret the scan runs the unauthenticated checks only.
 # Refresh tokens rotate, so the stored one works for one refresh. When the report says the token has
 # expired, log in again and update the secret.
+# The scan reads authlab.toml from your repo: copy examples/policy.toml there, or drop --policy.
 name: mcp-auth-conformance
 on:
   workflow_dispatch:
@@ -27,7 +28,7 @@ jobs:
       - name: restore stored tokens
         if: env.TOKENS != ''
         run: |
-          mkdir -p -m 700 ~/.config/mcp-authlab
+          install -d -m 700 "$HOME/.config/mcp-authlab"
           printf '%s' "$TOKENS" > ~/.config/mcp-authlab/tokens.json
           chmod 600 ~/.config/mcp-authlab/tokens.json
       - run: mcp-authlab scan https://mcp.staging.example.com/mcp --policy authlab.toml --format markdown -o report.md
