@@ -160,6 +160,20 @@ class LoginTests(FixtureCase):
         self.assertEqual({r["id"] for r in entry["asf"]}, {c.id for c in catalog.CATALOG if c.phase == catalog.LOGIN})
         self.assertTrue(all(r["status"] == "pass" for r in entry["asf"]), entry["asf"])
 
+    def test_login_spends_at_most_three_sign_ins_unless_thorough(self):
+        state = self.start("reference")  # the fixture revokes a code after a failed exchange
+        out = self.login(state, thorough=False)
+        self.assertEqual(len(self.last_login.callback_iss), 3)
+        asf = {r.check.id: r for r in out.results}
+        self.assertEqual(asf["ASF-02"].status, "pass")
+        self.assertIn("revoked afterwards", asf["ASF-02"].message)
+        self.assertEqual(asf["ASF-03"].status, "skip")
+        self.assertIn("--thorough", asf["ASF-03"].message)
+        self.assertTrue(out.foreign_usable)
+        out = self.login(state)  # loopback + no browser: thorough by default
+        self.assertEqual(len(self.last_login.callback_iss), 4)
+        self.assertEqual({r.check.id: r.status for r in out.results}["ASF-03"], "pass")
+
     def test_login_needs_client_id_without_registration(self):
         state = self.start("weak-as")
         with self.assertRaises(oauthclient.LoginError) as cm:

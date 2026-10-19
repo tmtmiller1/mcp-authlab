@@ -6,9 +6,13 @@ PKCE S256 and a loopback redirect, and stores the tokens. On the way it probes
 the authorization server (the ASF-* checks) and mints a second token for a
 different resource so the scan can test audience binding.
 
-A strict authorization server burns a code after a failed exchange, so the
-wrong-verifier and wrong-redirect probes can cost an extra authorization round.
-With a browser that is one more consent page; with the fixture it is automatic.
+A login signs in twice: once for the server's own token and once for the
+foreign-audience token. The wrong-verifier probe runs on the first code. A
+strict authorization server revokes a code after a failed exchange, which costs
+one more sign-in to get the real token; once that is known, the wrong-redirect
+probe is skipped rather than spending a fourth sign-in, unless `thorough` is
+set. On a loopback authorization server with no browser (the fixture) the
+rounds are free, so `thorough` is on by default there.
 """
 
 from __future__ import annotations
@@ -169,6 +173,7 @@ class Login:
         http_timeout: float = 10.0,
         insecure: bool = False,
         redirect_port: int = 0,
+        thorough: bool | None = None,
         client: Client | None = None,
         log: Callable[[str], None] | None = None,
     ):
@@ -181,6 +186,8 @@ class Login:
         self.timeout = timeout
         self.insecure = insecure
         self.redirect_port = redirect_port
+        self.thorough = thorough
+        self.burns_codes = False  # learned from the first probe
         self.http = client or Client(timeout=http_timeout, insecure=insecure)
         self.log = log or (lambda s: print(s, file=sys.stderr))
         self.results: list[Result] = []
@@ -367,6 +374,12 @@ class Login:
         expires_at = time.time() + float(exp) if isinstance(exp, (int, float)) else None
         rt = doc.get("refresh_token")
         return TokenSet(doc["access_token"], rt if isinstance(rt, str) else None, expires_at, doc, resource)
+
+    def _note_revocation(self, cid: str) -> None:
+        for r in self.results:
+            if r.check.id == cid and r.status == PASS:
+                r.message += "; the code was revoked afterwards"
+                r.evidence["code_revoked"] = True
 
     def _is_burned(self, resp: Response) -> bool:
         doc = _json_body(resp) or {}
@@ -576,7 +589,10 @@ class Login:
             assert self.client_id
             self._probe_asf01()
 
-            # Round 1: the token for the server itself; the wrong-verifier probe spends its code if the AS is strict.
+            if self.thorough is None:
+                self.thorough = self.no_browser and discovery.is_loopback(str(self.metadata["authorization_endpoint"]))
+
+            # Round 1: the token for the server itself. The wrong-verifier probe runs on this code first.
             code, verifier = self._round(cb, self.canonical, "token")
             resp = self._probe_asf02(code, self.canonical)
             if resp.status == 200 and (_json_body(resp) or {}).get("access_token"):
@@ -584,27 +600,38 @@ class Login:
             else:
                 resp = self._exchange(code, verifier, self.canonical)
                 if self._is_burned(resp):
-                    self.log("the authorization server burned the code after the failed probe; one more sign-in")
+                    self.burns_codes = True
+                    self._note_revocation("ASF-02")
+                    self.log("the authorization server revoked the code after the failed probe; one more sign-in")
                     code, verifier = self._round(cb, self.canonical, "token again")
                     resp = self._exchange(code, verifier, self.canonical)
                 main = self._tokens(resp, self.canonical)
             self.log("got an access token for " + self.canonical)
 
-            # Round 2: a token for another resource; the wrong-redirect probe spends its code the same way.
+            # Round 2: a token for another resource. The wrong-redirect probe runs here unless it would cost
+            # another sign-in and the caller did not ask for that.
             foreign_res = self.foreign_resource or self.issuer
             foreign: TokenSet | None = None
             try:
                 code, verifier = self._round(cb, foreign_res, "foreign token")
-                resp = self._probe_asf03(code, verifier, foreign_res)
-                if resp.status == 200 and (_json_body(resp) or {}).get("access_token"):
-                    foreign = self._tokens(resp, foreign_res)
-                else:
+                if self.burns_codes and not self.thorough:
+                    self._add(
+                        "ASF-03",
+                        SKIP,
+                        "the authorization server revokes a code after a failed exchange, so this probe would cost "
+                        "one more sign-in; run login with --thorough to include it",
+                    )
                     resp = self._exchange(code, verifier, foreign_res)
-                    if self._is_burned(resp):
-                        self.log("code burned after the probe; one more sign-in for the foreign token")
-                        code, verifier = self._round(cb, foreign_res, "foreign token again")
+                else:
+                    resp = self._probe_asf03(code, verifier, foreign_res)
+                    if not (resp.status == 200 and (_json_body(resp) or {}).get("access_token")):
                         resp = self._exchange(code, verifier, foreign_res)
-                    foreign = self._tokens(resp, foreign_res)
+                        if self._is_burned(resp):
+                            self._note_revocation("ASF-03")
+                            self.log("code revoked after the probe; one more sign-in for the foreign token")
+                            code, verifier = self._round(cb, foreign_res, "foreign token again")
+                            resp = self._exchange(code, verifier, foreign_res)
+                foreign = self._tokens(resp, foreign_res)
                 self.log("got a token for " + foreign_res)
             except LoginError as e:
                 self.log(f"could not mint a foreign-audience token: {e}")

@@ -37,6 +37,7 @@ class FixtureCase(unittest.TestCase):
         if state.profile.no_registration:
             kw.setdefault("client_id", "test-client")
         lg = oauthclient.Login(state.public_url, no_browser=True, timeout=5, http_timeout=5, log=lambda _s: None, **kw)
+        self.last_login = lg
         return lg.run()
 
     def scan(self, name: str, flags: list[str] | None = None, mode: str = "login", **kw: Any) -> dict[str, Any]:

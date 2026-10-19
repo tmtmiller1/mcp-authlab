@@ -95,6 +95,7 @@ def _cmd_login(args: argparse.Namespace) -> int:
         http_timeout=args.http_timeout,
         insecure=args.insecure,
         redirect_port=args.redirect_port,
+        thorough=True if args.thorough else None,
     )
     try:
         outcome = login.run()
@@ -212,6 +213,12 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("--http-timeout", type=float, default=10.0)
     lg.add_argument(
         "--redirect-port", type=int, default=0, help="fixed loopback port for the redirect URI (default: any free port)"
+    )
+    lg.add_argument(
+        "--thorough",
+        action="store_true",
+        help="run the redirect_uri probe even when the authorization server revokes codes after a failed "
+        "exchange, which costs one more sign-in (default on loopback with --no-browser)",
     )
     lg.add_argument("--insecure", action="store_true", help="do not verify TLS certificates")
     lg.add_argument("--no-color", action="store_true")

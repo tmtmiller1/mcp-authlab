@@ -74,7 +74,7 @@ mcp-authlab login https://mcp.example.com/mcp
 
 While it has the authorization server's attention it does three more things:
 
-- **Probes the authorization server** (the `ASF-*` checks): does it refuse a request without `code_challenge`, a wrong `code_verifier`, a mismatched `redirect_uri`? Are tokens bound to the resource you asked for? Do refresh tokens rotate? Were all URLs HTTPS and did the callback carry `iss`? A strict server burns an authorization code after a failed exchange, so two of these probes can cost one extra trip through the consent page.
+- **Probes the authorization server** (the `ASF-*` checks): does it refuse a request without `code_challenge`, a wrong `code_verifier`, a mismatched `redirect_uri`? Are tokens bound to the resource you asked for? Do refresh tokens rotate? Were all URLs HTTPS and did the callback carry `iss`? You sign in twice, once per token. A strict server revokes an authorization code after the failed `code_verifier` probe, which costs one more sign-in; when that happens the `redirect_uri` probe is skipped and the report says so, and `--thorough` runs it at the price of a fourth sign-in.
 - **Mints a second token for a different resource** (the authorization server's own issuer URL by default, `--foreign-resource` to choose) so the scan can test audience binding. If the authorization server ignores `resource=` and hands back the same audience, the report says exactly that rather than guessing.
 - **Records the results** next to the tokens so the scan report carries them.
 
