@@ -21,7 +21,7 @@
 - `--requests` output hides tokens and authorization codes in URLs, along with `Set-Cookie` headers.
 - The tokens file sits in a 0700 directory, writes are locked, and a damaged file is left in place for you to look at.
 - The fixture's `opaque_tokens` and `issuer_trailing_slash` flags cover opaque access tokens and issuer mismatches.
-- The test suite runs in about four seconds instead of eight; ruff and mypy run in CI.
+- The test suite polls for shutdown every 50 ms instead of every 500, and ruff and mypy run in CI.
 
 ## 0.1.0 (2026-10-19)
 

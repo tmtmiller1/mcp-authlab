@@ -201,7 +201,7 @@ python3 -m unittest discover -s tests -v
 ruff check src tests && ruff format --check src tests && mypy src
 ```
 
-The tests start each fixture profile on a random port, log in to it with `--no-browser`, scan it in-process, and assert the flagged set equals the profile's declared defects. The suite runs in about four seconds. Adding a check means adding it to `catalog.CATALOG`, implementing it in `scanner.Scanner` (or `oauthclient.Login` for the authorization server), breaking it in a fixture profile, declaring that in `EXPECTED_FAILURES`, and regenerating `docs/checks.md` with `mcp-authlab checks --markdown`. A test fails when that file is stale. [CHANGELOG.md](CHANGELOG.md) lists what changed in each release.
+The tests start each fixture profile on a random port, log in to it with `--no-browser`, scan it in-process, and assert the flagged set equals the profile's declared defects. The suite runs in about six seconds. Adding a check means adding it to `catalog.CATALOG`, implementing it in `scanner.Scanner` (or `oauthclient.Login` for the authorization server), breaking it in a fixture profile, declaring that in `EXPECTED_FAILURES`, and regenerating `docs/checks.md` with `mcp-authlab checks --markdown`. A test fails when that file is stale. [CHANGELOG.md](CHANGELOG.md) lists what changed in each release.
 
 ## License
 
