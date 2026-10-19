@@ -1,0 +1,20 @@
+# Gate a deployment on the authorization grade of a staging MCP server.
+# Put a valid staging token in the MCP_AUTHLAB_TOKEN secret to unlock the session, origin and query-string checks.
+name: mcp-auth-conformance
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install git+https://github.com/tmtmiller1/mcp-authlab
+      - run: mcp-authlab scan https://mcp.staging.example.com/mcp --fail-under B --format markdown -o report.md
+        env:
+          MCP_AUTHLAB_TOKEN: ${{ secrets.MCP_AUTHLAB_TOKEN }}
+      - if: always()
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY"

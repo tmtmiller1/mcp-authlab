@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-authlab"
+version = "0.1.0"
+description = "Black-box conformance scanner for MCP server authorization (OAuth 2.1, RFC 9728, RFC 8414, RFC 8707). Scans a live server, grades it, fails CI."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "tmtmiller" }]
+keywords = ["mcp", "model-context-protocol", "oauth", "security", "conformance", "rfc9728", "authorization"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/tmtmiller1/mcp-authlab"
+Issues = "https://github.com/tmtmiller1/mcp-authlab/issues"
+
+[project.scripts]
+mcp-authlab = "mcp_authlab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

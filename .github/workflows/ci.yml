@@ -1,0 +1,37 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e .
+      - run: python -m unittest discover -s tests -v
+      - name: reference server grades A
+        run: scripts/demo.sh reference --fail-under A --no-color
+      - name: broken profiles are caught
+        run: |
+          set -e
+          for p in passthrough sloppy open; do
+            if scripts/demo.sh "$p" --fail-under B --no-color >/dev/null; then echo "$p should have failed"; exit 1; fi
+          done
+      - name: reports
+        if: matrix.python == '3.12'
+        run: |
+          mkdir -p reports
+          for p in reference legacy weak-as passthrough sloppy open mismatch; do
+            scripts/demo.sh "$p" --format markdown -o "reports/$p.md" || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: matrix.python == '3.12'
+        with:
+          name: fixture-reports
+          path: reports/
