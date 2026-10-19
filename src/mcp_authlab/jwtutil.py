@@ -50,6 +50,8 @@ def verify_hs256(token: str, key: bytes) -> Claims:
     if len(parts) != 3:
         raise ValueError("malformed")
     header = json.loads(_unb64(parts[0]))
+    if not isinstance(header, dict):
+        raise ValueError("header must be a JSON object")
     if header.get("alg") != "HS256":
         raise ValueError(f"alg {header.get('alg')!r} not allowed")
     expected = hmac.new(key, f"{parts[0]}.{parts[1]}".encode("ascii"), hashlib.sha256).digest()
@@ -65,7 +67,7 @@ def verify_hs256(token: str, key: bytes) -> Claims:
 
 
 def unsigned(aud: str, issuer: str = "https://authlab.invalid", ttl: int = 600) -> str:
-    """An alg=none token. Any server that accepts this is not validating signatures."""
+    """An alg=none token. A server that accepts this isn't validating signatures."""
     now = int(time.time())
     return encode(
         {"iss": issuer, "sub": "mcp-authlab-probe", "aud": aud, "iat": now, "exp": now + ttl, "scope": "mcp"},

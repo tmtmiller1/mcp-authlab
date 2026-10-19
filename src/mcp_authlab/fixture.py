@@ -32,11 +32,11 @@ JsonDoc = dict[str, object]
 class Profile:
     name: str = "reference"
     # resource server
-    no_prm: bool = False  # no Protected Resource Metadata at all
+    no_prm: bool = False  # serves 404 for Protected Resource Metadata
     bare_401: bool = False  # 401 without a WWW-Authenticate header
     no_scope_challenge: bool = False
     skip_signature: bool = False  # accepts any JWT shape, including alg=none
-    skip_audience: bool = False  # does not check aud
+    skip_audience: bool = False  # skips the aud check
     query_tokens: bool = False  # accepts ?access_token=
     session_is_auth: bool = False  # a known Mcp-Session-Id is enough
     weak_session: bool = False  # short sequential session IDs
@@ -44,11 +44,11 @@ class Profile:
     wildcard_scopes: bool = False
     no_error_param: bool = False  # 401 for a bad token without error="invalid_token"
     ignore_version: bool = False
-    open: bool = False  # no authorization at all
+    open: bool = False  # serves every request, token or not
     wrong_resource: bool = False  # PRM 'resource' points elsewhere
     forbid_instead: bool = False  # 403 instead of 401 when unauthenticated
     bare_403: bool = False  # scope step-up 403 without a challenge
-    stateless: bool = False  # no Mcp-Session-Id at all
+    stateless: bool = False  # stateless: doesn't issue Mcp-Session-Id
     # authorization server metadata
     http_as: bool = False  # AS endpoints published as http://
     no_pkce: bool = False  # metadata lacks S256
@@ -59,8 +59,10 @@ class Profile:
     skip_verifier: bool = False  # token endpoint ignores code_verifier
     skip_redirect_check: bool = False  # token endpoint ignores redirect_uri
     ignore_resource: bool = False  # tokens are always minted for the default resource
-    static_refresh: bool = False  # refresh tokens never rotate
+    static_refresh: bool = False  # refresh hands back the same refresh token
     drop_iss: bool = False  # advertises iss but omits it from the callback
+    opaque_tokens: bool = False  # issues random-string access tokens instead of JWTs
+    issuer_trailing_slash: bool = False  # metadata issuer differs from the advertised URL by a trailing slash
 
 
 DEFECTS: tuple[str, ...] = tuple(f.name for f in fields(Profile) if f.name != "name")
@@ -100,7 +102,7 @@ PROFILES: dict[str, Profile] = {
 }
 
 # What the scanner must flag (fail or warn) for each profile after a login and a scan.
-# Tests assert exactly these. TLS-01 warns on loopback for every profile and is left out.
+# Tests assert these and only these. TLS-01 warns on loopback for every profile and is left out.
 EXPECTED_FAILURES: dict[str, set[str]] = {
     "reference": set(),
     "legacy": {"CHAL-02", "PRM-01", "TOK-04", "SCOPE-01"},
@@ -143,6 +145,7 @@ class FixtureState:
         self.clients: dict[str, dict[str, Any]] = {}
         self.codes: dict[str, dict[str, Any]] = {}
         self.refresh_tokens: dict[str, dict[str, Any]] = {}
+        self.opaque: dict[str, dict[str, Any]] = {}
         self.counter = 1000
         self.lock = threading.Lock()
 
@@ -160,6 +163,12 @@ class FixtureState:
             },
             self.secret,
         )
+
+    def mint_opaque(self, aud: str, scope: str, ttl: int = 3600) -> str:
+        token = "op-" + secrets.token_urlsafe(32)
+        with self.lock:
+            self.opaque[token] = {"aud": aud, "scope": scope, "exp": time.time() + ttl, "iss": self.as_url}
+        return token
 
     def new_session(self) -> str:
         with self.lock:
@@ -211,7 +220,8 @@ class Handler(BaseHTTPRequestHandler):
     @property
     def st(self) -> FixtureState:
         state = cast(FixtureServer, self.server).state
-        assert state is not None, "FixtureServer started without state"
+        if state is None:
+            raise RuntimeError("FixtureServer started without state; use fixture.serve()")
         return state
 
     @property
@@ -280,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
     def _as_doc(self) -> JsonDoc:
         base = "http://as.example.com" if self.p.http_as else self.st.as_url
         doc: JsonDoc = {
-            "issuer": self.st.as_url,
+            "issuer": self.st.as_url + ("/" if self.p.issuer_trailing_slash else ""),
             "authorization_endpoint": f"{base}/authorize",
             "token_endpoint": f"{base}/token",
             "response_types_supported": ["code"],
@@ -338,6 +348,10 @@ class Handler(BaseHTTPRequestHandler):
                 _, claims, _ = jwtutil.decode_unverified(token)
                 exp = claims.get("exp")
                 if isinstance(exp, (int, float)) and time.time() >= exp:
+                    raise ValueError("expired")
+            elif token in self.st.opaque:
+                claims = self.st.opaque[token]
+                if time.time() >= claims["exp"]:
                     raise ValueError("expired")
             else:
                 claims = jwtutil.verify_hs256(token, self.st.secret)
@@ -526,15 +540,14 @@ class Handler(BaseHTTPRequestHandler):
             return False
         client = self.st.clients.get(client_id)
         if client is None:
-            return self.p.no_registration  # pre-registered clients are not modelled; accept any id
+            return self.p.no_registration  # without registration, the fixture accepts any client_id as pre-registered
         return any(_same_redirect(r, redirect_uri) for r in client["redirect_uris"])
 
     def _authorize_endpoint(self, q: dict[str, str], consented: bool = False) -> None:
         client_id, redirect_uri = q.get("client_id"), q.get("redirect_uri")
-        if not self._client_ok(client_id, redirect_uri):
+        if client_id is None or redirect_uri is None or not self._client_ok(client_id, redirect_uri):
             self._html(400, "<h1>invalid_request</h1><p>unknown client or redirect_uri</p>")
             return
-        assert redirect_uri is not None and client_id is not None
 
         def err(code: str, desc: str) -> None:
             params = {"error": code, "error_description": desc}
@@ -593,7 +606,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.st.refresh_tokens.pop(old_refresh or "", None)
                 self.st.refresh_tokens[refresh] = {"client_id": client_id, "aud": aud, "scope": scope}
         body = {
-            "access_token": self.st.mint(aud, scope=scope),
+            "access_token": self.st.mint_opaque(aud, scope) if self.p.opaque_tokens else self.st.mint(aud, scope=scope),
             "token_type": "Bearer",
             "expires_in": 3600,
             "refresh_token": refresh,
@@ -615,7 +628,7 @@ class Handler(BaseHTTPRequestHandler):
             self._token_error("unsupported_grant_type", "authorization_code or refresh_token")
             return
         with self.st.lock:
-            rec = self.st.codes.pop(f.get("code") or "", None)  # single use, whatever happens next
+            rec = self.st.codes.pop(f.get("code") or "", None)  # a code works once, even if the exchange fails
         if rec is None or rec["exp"] < time.time():
             self._token_error("invalid_grant", "unknown, used or expired code")
             return
@@ -623,13 +636,13 @@ class Handler(BaseHTTPRequestHandler):
             self._token_error("invalid_grant", "code was issued to another client")
             return
         if not self.p.skip_redirect_check and f.get("redirect_uri") != rec["redirect_uri"]:
-            self._token_error("invalid_grant", "redirect_uri does not match the authorization request")
+            self._token_error("invalid_grant", "redirect_uri doesn't match the authorization request")
             return
         if rec["code_challenge"] and not self.p.skip_verifier:
             verifier = f.get("code_verifier") or ""
             digest = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode()
             if not verifier or digest != rec["code_challenge"]:
-                self._token_error("invalid_grant", "code_verifier does not match code_challenge")
+                self._token_error("invalid_grant", "code_verifier doesn't match code_challenge")
                 return
         resource = f.get("resource") or rec["resource"]
         aud = self.st.resource if self.p.ignore_resource or not resource else discovery.canonical(resource)

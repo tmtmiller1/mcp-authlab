@@ -5,7 +5,7 @@
     downgrade = { "ORIG-01" = "SHOULD" }
 
 Ignored checks still run and still print; they stop counting toward the grade.
-A downgraded check counts at the new level and is never critical.
+A downgraded check counts at the new level and stops being critical.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def parse(text: str, source: str | None = None) -> Policy:
     try:
         doc = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
-        raise PolicyError(f"policy is not valid TOML: {e}") from e
+        raise PolicyError(f"policy isn't valid TOML: {e}") from e
     pol = Policy(source=source)
     unknown = set(doc) - {"fail_under", "ignore", "downgrade"}
     if unknown:
@@ -85,5 +85,5 @@ def load(path: str | Path) -> Policy:
     try:
         text = p.read_text(encoding="utf-8")
     except OSError as e:
-        raise PolicyError(f"cannot read policy {p}: {e}") from e
+        raise PolicyError(f"couldn't read policy {p}: {e}") from e
     return parse(text, source=str(p))

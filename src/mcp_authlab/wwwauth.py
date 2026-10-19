@@ -66,24 +66,24 @@ def _unescape(quoted: str) -> str:
 
 
 def _parse_one(c: _Cursor, out: list[Challenge]) -> bool:
-    """Parse one challenge at the cursor; return False when nothing parseable is left."""
+    """Parse one challenge at the cursor; return False at the end of parseable input."""
     c.skip_commas()
     m = c.match(_TOKEN)
     if not m:
         return False
-    ch = Challenge(scheme=m.group(1) if m.lastindex else m.group(0))
+    ch = Challenge(scheme=m.group(0))
     c.i = m.end()
     out.append(ch)
     if c.done() or c.peek() == ",":
         return True
     if c.peek() not in " \t":
         # Something other than SP or comma after the scheme: not a challenge we understand.
-        # Skip to the next comma so one bad element does not hide the rest.
+        # Skip to the next comma so one bad element doesn't hide the rest.
         nxt = c.s.find(",", c.i)
         c.i = len(c.s) if nxt < 0 else nxt
         return True
     c.ows()
-    # Try auth-params first; token68 only when the first thing is not name=value.
+    # Try auth-params first; token68 only when the first thing isn't name=value.
     pm = c.match(_AUTH_PARAM)
     if not pm:
         tm = c.match(_TOKEN68)
@@ -102,6 +102,11 @@ def _parse_one(c: _Cursor, out: list[Challenge]) -> bool:
         save = c.i
         c.ows()
         if c.peek() != ",":
+            # A missing comma between two auth-params is a common server bug. Read on as the same
+            # challenge rather than mistaking the next param name for a new scheme.
+            if c.match(_AUTH_PARAM):
+                continue
+            c.i = save
             return True
         c.skip_commas()
         # After a comma: another auth-param continues this challenge; a bare token starts the next one.

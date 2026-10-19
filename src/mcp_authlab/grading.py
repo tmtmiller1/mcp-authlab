@@ -15,13 +15,16 @@ from .catalog import ERROR, FAIL, PASS, SKIP, WARN, Result
 GRADING: dict[str, Any] = {
     # Weight a check contributes to the denominator when it ran (pass, fail or warn).
     "weights": {"critical": 20, "MUST": 10, "SHOULD": 3},
-    # Share of a check's weight a WARN earns. A SHOULD check that warns earns nothing;
+    # Share of a check's weight a WARN earns. A SHOULD check that warns earns 0;
     # a MUST check that warns (loopback http, 400 answered as 200) earns half.
     "warn_credit": {"MUST": 0.5, "SHOULD": 0.0},
     # Score (percent of weight earned) needed for each letter, checked top down.
     "thresholds": [("A", 95), ("B", 85), ("C", 70), ("D", 50)],
-    # A failed MUST check caps the letter here, whatever the score.
+    # A failed MUST check caps the letter here, even with a high score.
     "must_failure_cap": "C",
+    # A critical check whose request errored (timeout, dropped connection) caps the letter here: the scan
+    # couldn't confirm the server is safe, and a dropped connection on a forged token is no proof.
+    "unverified_critical_cap": "C",
     # These failures are F on their own: any critical check, and a server that
     # answers unauthenticated requests with anything other than 401.
     "f_on_failure": ["CHAL-01"],
@@ -97,6 +100,7 @@ def grade(results: list[Result]) -> Grade:
     g.must_failures = [r.check.id for r in ran if r.status == FAIL and r.level == "MUST"]
     g.warnings = [r.check.id for r in ran if r.status == WARN]
     g.ignored = [r.check.id for r in results if not r.counted and r.status in (FAIL, WARN)]
+    errored = [r.check.id for r in counted if r.status == ERROR and r.critical]
 
     letter = "F"
     for name, floor in GRADING["thresholds"]:
@@ -108,13 +112,16 @@ def grade(results: list[Result]) -> Grade:
         letter = "F"
     f_on = [r.check.id for r in ran if r.status == FAIL and r.check.id in GRADING["f_on_failure"]]
     if f_on and not g.critical_failures:
-        g.reasons.append("server does not challenge unauthenticated requests")
+        g.reasons.append("server doesn't challenge unauthenticated requests")
         letter = "F"
     if g.must_failures and letter != "F":
         g.reasons.append("MUST failures: " + ", ".join(g.must_failures))
         letter = _cap(letter, GRADING["must_failure_cap"])
     elif g.must_failures:
         g.reasons.append("MUST failures: " + ", ".join(g.must_failures))
+    if errored:
+        g.reasons.append("critical checks errored, so they're unverified: " + ", ".join(errored))
+        letter = _cap(letter, GRADING["unverified_critical_cap"])
     if g.warnings and not g.must_failures:
         g.reasons.append("warnings: " + ", ".join(g.warnings))
     if g.ignored:
@@ -124,10 +131,10 @@ def grade(results: list[Result]) -> Grade:
 
 
 def coverage(results: list[Result]) -> dict[str, Any]:
-    """How many applicable checks ran, and which critical checks did not."""
+    """How many applicable checks ran to a verdict, and which critical checks were skipped or errored."""
     applicable = [r for r in results if r.applicable]
-    ran = [r for r in applicable if r.status in (PASS, FAIL, WARN, ERROR)]
-    not_run = [r.check.id for r in applicable if r.status == SKIP and r.critical]
+    ran = [r for r in applicable if r.status in (PASS, FAIL, WARN)]
+    not_run = [r.check.id for r in applicable if r.status in (SKIP, ERROR) and r.critical]
     login_helps = any(r.status == SKIP and r.critical and r.evidence.get("needs_login") for r in applicable)
     return {"ran": len(ran), "applicable": len(applicable), "critical_not_run": not_run, "login_helps": login_helps}
 

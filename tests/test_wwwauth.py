@@ -143,6 +143,11 @@ CASES: list[tuple[str, list[str], list[tuple[str, dict[str, str], str | None]]]]
         [("Bearer", {"realm": "x", "error": "invalid_token"}, None)],
     ),
     (
+        "missing comma between params stays one challenge",
+        ['Bearer realm="x" error="invalid_token"'],
+        [("Bearer", {"realm": "x", "error": "invalid_token"}, None)],
+    ),
+    (
         "empty header",
         [""],
         [],

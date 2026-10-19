@@ -1,4 +1,5 @@
-"""Minimal HTTP client on urllib: no redirects, no exceptions on 4xx/5xx, keeps evidence."""
+"""Minimal HTTP client on urllib. It leaves redirects unfollowed, returns 4xx/5xx as responses, and logs each
+exchange as evidence."""
 
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from typing import Any
 
 
 class TransportError(Exception):
-    """The request never produced an HTTP response (DNS, TLS, refused, timeout)."""
+    """The request didn't get an HTTP response (DNS, TLS, refused, timeout)."""
 
 
 @dataclass
@@ -70,7 +71,27 @@ class _KeepErrors(urllib.request.HTTPErrorProcessor):
     https_response = http_response
 
 
-REDACT = {"authorization", "cookie", "mcp-session-id"}
+REDACT = {"authorization", "cookie", "set-cookie", "mcp-session-id"}
+REDACT_QUERY = {"access_token", "code", "refresh_token"}
+
+
+def _redact_url(url: str) -> str:
+    """Hide credentials that travel in a query string, so the request log is safe to publish."""
+    parts = urllib.parse.urlsplit(url)
+    if not parts.query:
+        return url
+    pairs = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    query = urllib.parse.urlencode([(k, "<redacted>" if k in REDACT_QUERY else v) for k, v in pairs])
+    return urllib.parse.urlunsplit(parts._replace(query=query))
+
+
+def _log_headers(headers: Message) -> dict[str, str]:
+    """One entry per header name; repeated headers such as WWW-Authenticate are joined with ', '."""
+    out: dict[str, str] = {}
+    for k in dict.fromkeys(headers.keys()):
+        values = headers.get_all(k) or []
+        out[k] = "<redacted>" if k.lower() in REDACT else ", ".join(values)
+    return out
 
 
 class Client:
@@ -91,23 +112,27 @@ class Client:
     ) -> Response:
         hdrs = {"User-Agent": self.user_agent}
         hdrs.update(headers or {})
-        req = urllib.request.Request(url, data=body, method=method, headers=hdrs)
         logged = {k: ("<redacted>" if k.lower() in REDACT else v) for k, v in hdrs.items()}
-        entry = Exchange(method=method, url=url, request_headers=logged, status=None)
+        entry = Exchange(method=method, url=_redact_url(url), request_headers=logged, status=None)
         self.log.append(entry)
+        if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
+            # The scanner follows URLs a server hands it; only ever fetch http(s).
+            entry.error = f"refused to fetch a non-http(s) URL: {entry.url}"
+            raise TransportError(entry.error)
+        req = urllib.request.Request(url, data=body, method=method, headers=hdrs)
         start = time.monotonic()
         try:
             with self._opener.open(req, timeout=self.timeout) as resp:
                 data = resp.read()
                 elapsed = int((time.monotonic() - start) * 1000)
                 entry.status = resp.status
-                entry.response_headers = dict(resp.headers.items())
+                entry.response_headers = _log_headers(resp.headers)
                 return Response(resp.status, resp.headers, data, url, elapsed)
         except urllib.error.HTTPError as e:  # only raised for codes urllib still treats as errors
             data = e.read()
             elapsed = int((time.monotonic() - start) * 1000)
             entry.status = e.code
-            entry.response_headers = dict(e.headers.items())
+            entry.response_headers = _log_headers(e.headers)
             return Response(e.code, e.headers, data, url, elapsed)
         except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
             entry.error = f"{type(e).__name__}: {e}"

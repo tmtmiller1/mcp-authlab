@@ -8,9 +8,9 @@ import re
 import secrets
 import time
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
-from . import PROTOCOL_VERSION, SPEC_VERSION, __version__, discovery, jwtutil, wwwauth
+from . import PROTOCOL_VERSION, SPEC_VERSION, __version__, discovery, jwtutil, tokenstore, wwwauth
 from .catalog import BY_ID, CATALOG, ERROR, FAIL, LOGIN, PASS, SKIP, WARN, Result
 from .grading import coverage, coverage_line, grade
 from .httpclient import Client, Response, TransportError
@@ -64,7 +64,7 @@ def _mcp_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
 
 
 def _jsonrpc_result(resp: Response) -> JsonDoc | None:
-    """Pull the JSON-RPC message out of a JSON or SSE body, if there is one."""
+    """Pull the JSON-RPC message out of a JSON or SSE body, if there's one."""
     if resp.content_type == "text/event-stream":
         data_lines: list[str] = []
         for line in resp.text.splitlines() + [""]:
@@ -95,10 +95,6 @@ def _summ(resp: Response) -> dict[str, Any]:
     }
 
 
-def _is_https_or_loopback(url: str) -> bool:
-    return urlsplit(url).scheme.lower() == "https" or discovery.is_loopback(url)
-
-
 class Scanner:
     def __init__(
         self,
@@ -118,6 +114,7 @@ class Scanner:
         self.token = token
         self.foreign_token = foreign_token
         self.foreign_note = foreign_note
+        self.foreign_note_needs_login = False
         self.foreign_audience_known = foreign_audience_known
         self.login_results = login_results
         self.tool = tool
@@ -173,9 +170,9 @@ class Scanner:
         try:
             resp = self._post_initialize()
         except TransportError as e:
-            self._add("CHAL-01", ERROR, f"no HTTP response: {e}")
+            self._add("CHAL-01", ERROR, f"the server didn't answer: {e}")
             for cid in ("CHAL-02", "CHAL-03"):
-                self._skip(cid, "no response to inspect")
+                self._skip(cid, "the server didn't respond")
             return None
         ev = _summ(resp)
         if resp.status == 401:
@@ -185,11 +182,11 @@ class Scanner:
             self._add(
                 "CHAL-01",
                 FAIL,
-                "server answered an unauthenticated initialize; it is open or authorization is off",
+                "server answered an unauthenticated initialize; it's open or authorization is off",
                 **ev,
             )
         elif resp.status == 403:
-            self._add("CHAL-01", FAIL, "403 instead of 401: clients cannot start the discovery flow from a 403", **ev)
+            self._add("CHAL-01", FAIL, "403 instead of 401: clients can't start the discovery flow from a 403", **ev)
         else:
             self._add("CHAL-01", FAIL, f"expected 401, got {resp.status}", **ev)
 
@@ -197,23 +194,23 @@ class Scanner:
         ch = wwwauth.bearer(values)
         self.challenge = ch
         if resp.status != 401:
-            self._skip("CHAL-02", "no 401 to carry a challenge")
-            self._skip("CHAL-03", "no 401 to carry a challenge")
+            self._skip("CHAL-02", "the server didn't answer 401")
+            self._skip("CHAL-03", "the server didn't answer 401")
             return resp
         if ch is None:
             self._add(
                 "CHAL-02",
                 FAIL,
-                "no Bearer challenge in WWW-Authenticate; clients cannot discover the authorization server",
+                "the 401 doesn't carry a Bearer challenge, so clients can't find the authorization server",
                 **ev,
             )
-            self._skip("CHAL-03", "no Bearer challenge")
+            self._skip("CHAL-03", "the 401 doesn't carry a Bearer challenge")
             return resp
         rm = ch.params.get("resource_metadata")
         if not rm:
             self._add("CHAL-02", FAIL, "Bearer challenge lacks resource_metadata", **ev)
         elif urlsplit(rm).scheme not in ("http", "https"):
-            self._add("CHAL-02", FAIL, f"resource_metadata is not an http(s) URL: {rm!r}", **ev)
+            self._add("CHAL-02", FAIL, f"resource_metadata isn't an http(s) URL: {rm!r}", **ev)
         else:
             self._add("CHAL-02", PASS, f"resource_metadata={rm}", **ev)
         scope = ch.params.get("scope")
@@ -221,7 +218,11 @@ class Scanner:
             self._add("CHAL-03", PASS, f"scope={scope!r}", **ev)
         else:
             self._add(
-                "CHAL-03", WARN, "no scope parameter; clients fall back to scopes_supported or request nothing", **ev
+                "CHAL-03",
+                WARN,
+                "the 401 doesn't say which scopes to request, so clients fall back to scopes_supported "
+                "or ask for a token without scopes",
+                **ev,
             )
         return resp
 
@@ -265,13 +266,18 @@ class Scanner:
                 "PRM-01",
                 FAIL,
                 "metadata is only reachable through the challenge URL, not at the RFC 9728 well-known path; "
-                "clients that start from the URL alone will not find it",
+                "clients that start from the URL alone won't find it",
                 attempts=attempts,
             )
         else:
-            self._add("PRM-01", FAIL, "no Protected Resource Metadata document found", attempts=attempts)
+            self._add(
+                "PRM-01",
+                FAIL,
+                "couldn't find a Protected Resource Metadata document at the challenge URL or the well-known paths",
+                attempts=attempts,
+            )
             for cid in ("PRM-02", "PRM-03", "PRM-04", "PRM-05", "PRM-06"):
-                self._skip(cid, "no metadata document")
+                self._skip(cid, "needs the Protected Resource Metadata document")
             return
 
         prm = self.prm or {}
@@ -297,7 +303,7 @@ class Scanner:
             self._add(
                 "PRM-02",
                 FAIL,
-                f"resource={resource!r} does not match the scanned URI {self.canonical!r}; "
+                f"resource={resource!r} doesn't match the scanned URI {self.canonical!r}; "
                 "clients MUST reject mismatched metadata (RFC 9728 section 3.3)",
                 document=prm,
             )
@@ -314,7 +320,7 @@ class Scanner:
                 self._add(
                     "PRM-04",
                     FAIL,
-                    f"challenge pointed at {advertised} but it did not return a JSON document",
+                    f"challenge pointed at {advertised} but it didn't return a JSON document",
                     attempts=attempts,
                 )
             elif adv_doc == self.prm:
@@ -328,7 +334,7 @@ class Scanner:
                     wellknown=self.prm,
                 )
         else:
-            self._skip("PRM-04", "challenge did not advertise resource_metadata", applicable=False)
+            self._skip("PRM-04", "the challenge didn't advertise resource_metadata", applicable=False)
 
         scopes = prm.get("scopes_supported")
         if isinstance(scopes, list):
@@ -341,9 +347,13 @@ class Scanner:
             if bad:
                 self._add("PRM-05", WARN, f"over-broad or inappropriate scopes advertised: {bad}", scopes=scopes)
             else:
-                self._add("PRM-05", PASS, f"{len(scopes)} scopes, none over-broad", scopes=scopes)
+                self._add("PRM-05", PASS, f"{len(scopes)} scopes, all specific", scopes=scopes)
         else:
-            self._add("PRM-05", PASS, "scopes_supported not published (clients request nothing until challenged)")
+            self._add(
+                "PRM-05",
+                PASS,
+                "scopes_supported isn't published, so clients wait for a challenge to learn what to request",
+            )
 
         methods = prm.get("bearer_methods_supported")
         if isinstance(methods, list) and "query" in methods:
@@ -354,13 +364,13 @@ class Scanner:
                 methods=methods,
             )
         else:
-            self._add("PRM-06", PASS, "no query-string bearer method advertised")
+            self._add("PRM-06", PASS, "bearer_methods_supported leaves out 'query'")
 
     def _authorization_servers(self) -> None:
         servers = (self.prm or {}).get("authorization_servers")
         if not (isinstance(servers, list) and servers):
             for cid in ("ASM-01", "ASM-02", "ASM-03", "ASM-04", "ASM-05", "ASM-06"):
-                self._skip(cid, "no authorization servers to inspect")
+                self._skip(cid, "the metadata doesn't list an authorization server")
             return
         # Grade on the worst server; report each.
         docs: list[tuple[str, str, JsonDoc]] = []
@@ -368,7 +378,7 @@ class Scanner:
         attempts_all: list[dict[str, Any]] = []
         for issuer in servers:
             if not isinstance(issuer, str):
-                failures.append(f"{issuer!r} is not a URL")
+                failures.append(f"{issuer!r} isn't a URL")
                 continue
             found: tuple[str, str, JsonDoc] | None = None
             for kind, url in discovery.authorization_server_metadata_urls(issuer):
@@ -377,7 +387,7 @@ class Scanner:
                     found = (kind, url, doc)
                     break
             if not found:
-                failures.append(f"{issuer}: no metadata at any discovery location")
+                failures.append(f"{issuer}: metadata isn't at any discovery location")
                 continue
             _kind, url, doc = found
             missing = [f for f in _REQUIRED_AS_FIELDS if f not in doc]
@@ -390,14 +400,12 @@ class Scanner:
             self._add("ASM-01", PASS, "; ".join(f"{i} via {u}" for i, u, _ in docs), attempts=attempts_all)
         if not docs:
             for cid in ("ASM-02", "ASM-03", "ASM-04", "ASM-05", "ASM-06"):
-                self._skip(cid, "no authorization server metadata to inspect")
+                self._skip(cid, "couldn't fetch authorization server metadata")
             return
 
-        bad_iss = [
-            f"{i}: issuer={d.get('issuer')!r}"
-            for i, _, d in docs
-            if discovery.canonical(str(d.get("issuer", ""))) != discovery.canonical(i)
-        ]
+        # RFC 8414 section 3.3: the issuer must be identical to the URL the metadata was discovered from.
+        # Clients compare the strings exactly, so a trailing slash or a case difference fails here too.
+        bad_iss = [f"{i}: issuer={d.get('issuer')!r}" for i, _, d in docs if d.get("issuer") != i]
         if bad_iss:
             self._add("ASM-02", FAIL, "issuer mismatch invites mix-up attacks: " + "; ".join(bad_iss))
         else:
@@ -407,14 +415,19 @@ class Scanner:
         for _, _, d in docs:
             for key in _AS_ENDPOINT_KEYS:
                 v = d.get(key)
-                if isinstance(v, str) and not _is_https_or_loopback(v):
+                if isinstance(v, str) and not discovery.is_https_or_loopback(v):
                     insecure.append(f"{key}={v}")
         if insecure:
             self._add("ASM-03", FAIL, "non-HTTPS endpoints: " + ", ".join(insecure))
         else:
             self._add("ASM-03", PASS, "all endpoints HTTPS (or loopback)")
 
-        no_pkce = [i for i, _, d in docs if "S256" not in (d.get("code_challenge_methods_supported") or [])]
+        no_pkce = [
+            i
+            for i, _, d in docs
+            if not isinstance(d.get("code_challenge_methods_supported"), list)
+            or "S256" not in d["code_challenge_methods_supported"]
+        ]
         if no_pkce:
             self._add(
                 "ASM-04",
@@ -439,9 +452,9 @@ class Scanner:
             self._add(
                 "ASM-05",
                 WARN,
-                "no automatic client registration path for: "
+                "clients have to be registered by hand for: "
                 + ", ".join(none)
-                + "; every client needs a pre-registered client_id",
+                + " (neither dynamic registration nor Client ID Metadata Documents is offered)",
             )
         else:
             self._add("ASM-05", PASS, "; ".join(f"{i}: {', '.join(w)}" for i, w in reg))
@@ -449,7 +462,7 @@ class Scanner:
         no_iss = [i for i, _, d in docs if d.get("authorization_response_iss_parameter_supported") is not True]
         if no_iss:
             self._add(
-                "ASM-06", WARN, "authorization_response_iss_parameter_supported is not true for: " + ", ".join(no_iss)
+                "ASM-06", WARN, "authorization_response_iss_parameter_supported isn't true for: " + ", ".join(no_iss)
             )
         else:
             self._add("ASM-06", PASS, "iss parameter supported")
@@ -465,7 +478,7 @@ class Scanner:
         for cid in ids:
             d = stored.get(cid)
             if d is None:
-                self._skip(cid, "login recorded no result for this check")
+                self._skip(cid, "login didn't record a result for this check")
             else:
                 self.results.append(Result.from_dict(d))
 
@@ -474,7 +487,7 @@ class Scanner:
             why = (
                 "server is unreachable"
                 if unauth is None
-                else "server accepts unauthenticated requests, so token rejection cannot be observed"
+                else "server accepts unauthenticated requests, so a refused token can't be told apart"
             )
             for cid in ("TOK-01", "TOK-02", "TOK-03", "TOK-04"):
                 self._skip(cid, why)
@@ -501,8 +514,8 @@ class Scanner:
                 self._add(
                     "TOK-04",
                     WARN,
-                    '401 for a bad token does not say error="invalid_token"; '
-                    "clients cannot tell 'no token' from 'bad token'",
+                    '401 for a bad token doesn\'t say error="invalid_token", so '
+                    "clients can't tell a missing token from a bad one",
                     **_summ(r),
                 )
 
@@ -514,7 +527,7 @@ class Scanner:
         else:
             if r.status in (200, 202):
                 self._add(
-                    "TOK-02", FAIL, "server accepted an unsigned JWT: it is not validating tokens at all", **_summ(r)
+                    "TOK-02", FAIL, "server accepted an unsigned JWT, so it isn't validating tokens at all", **_summ(r)
                 )
             elif r.status == 401:
                 self._add("TOK-02", PASS, "401", **_summ(r))
@@ -523,7 +536,7 @@ class Scanner:
 
         if not self.foreign_token:
             if self.foreign_note:
-                self._skip("TOK-03", self.foreign_note)
+                self._skip("TOK-03", self.foreign_note, login=self.foreign_note_needs_login)
             else:
                 self._skip("TOK-03", f"needs a token minted for a different resource; {LOGIN_HINT}", login=True)
             return
@@ -536,7 +549,7 @@ class Scanner:
             self._add(
                 "TOK-03",
                 FAIL,
-                "server accepted a token issued for another resource: audience is not validated "
+                "server accepted a token issued for another resource, so it isn't checking the audience "
                 "(token passthrough risk)",
                 **_summ(r),
             )
@@ -544,7 +557,7 @@ class Scanner:
             self._add(
                 "TOK-03",
                 WARN,
-                "server accepted the second token. It is opaque, so this tool cannot see whether the authorization "
+                "server accepted the second token. It's opaque, so this tool can't see whether the authorization "
                 "server bound it to the other resource. Treat this as a likely audience failure and confirm with "
                 "the authorization server's introspection endpoint or logs.",
                 **_summ(r),
@@ -560,12 +573,16 @@ class Scanner:
         tok3 = self._get("TOK-03")
         if asf is None or asf.status != SKIP or not asf.evidence.get("opaque") or tok3 is None:
             return
-        if tok3.status == PASS:
+        if tok3.status in (SKIP, ERROR):
+            return
+        # Decide from what the resource server did, not from TOK-03's status: a 403 refusal is a WARN there.
+        accepted = tok3.evidence.get("http_status") in (200, 202)
+        if not accepted:
             asf.status = PASS
             asf.message = (
                 "tokens are opaque, but the resource server told the two apart, so they were bound differently"
             )
-        elif tok3.status in (FAIL, WARN):
+        else:
             asf.status = WARN
             asf.message = (
                 "tokens are opaque and the resource server accepted both; either the authorization server ignored "
@@ -602,7 +619,7 @@ class Scanner:
             )
             for cid in needs:
                 if cid != "TOK-06":
-                    self._skip(cid, "token did not work")
+                    self._skip(cid, "the token didn't work")
             return
 
         sid = r1.header("Mcp-Session-Id")
@@ -611,11 +628,11 @@ class Scanner:
         # TOK-05: same token, query string only
         sep = "&" if "?" in self.target else "?"
         if self.open:
-            self._skip("TOK-05", "server is open; acceptance proves nothing")
+            self._skip("TOK-05", "server is open, so a 200 here wouldn't prove anything")
             rq = None
         else:
             try:
-                rq = self._post_initialize(url=f"{self.target}{sep}access_token={self.token}")
+                rq = self._post_initialize(url=f"{self.target}{sep}access_token={quote(self.token, safe='')}")
             except TransportError as e:
                 self._add("TOK-05", ERROR, str(e))
                 rq = None
@@ -634,8 +651,8 @@ class Scanner:
                 self._end_session(qsid, auth)
 
         if not sid:
-            self._skip("SESS-01", "server is stateless (no Mcp-Session-Id)", applicable=False)
-            self._skip("SESS-02", "server is stateless (no Mcp-Session-Id)", applicable=False)
+            self._skip("SESS-01", "server is stateless (it doesn't issue Mcp-Session-Id)", applicable=False)
+            self._skip("SESS-02", "server is stateless (it doesn't issue Mcp-Session-Id)", applicable=False)
         else:
             self._session_probes(sid, auth)
 
@@ -674,11 +691,13 @@ class Scanner:
 
     def _session_probes(self, sid: str, auth: dict[str, str]) -> None:
         if self.open:
-            self._skip("SESS-01", "server is open; acceptance proves nothing")
+            self._skip("SESS-01", "server is open, so a 200 here wouldn't prove anything")
             rs = None
         else:
+            # A live session, no token, and a request other than initialize: the common bug checks the token
+            # on initialize and then trusts the session ID for everything after.
             try:
-                rs = self._post_initialize({"Mcp-Session-Id": sid})
+                rs = self.client.post_json(self.target, _rpc("tools/list"), _mcp_headers({"Mcp-Session-Id": sid}))
             except TransportError as e:
                 self._add("SESS-01", ERROR, str(e))
                 rs = None
@@ -687,7 +706,7 @@ class Scanner:
                 self._add(
                     "SESS-01",
                     FAIL,
-                    "a request carrying only the session ID (no bearer token) was accepted; "
+                    "a request carrying only the session ID, without a bearer token, was accepted; "
                     "anyone who learns the session ID is the user",
                     **_summ(rs),
                 )
@@ -740,7 +759,7 @@ class Scanner:
     def _scope_probe(self, auth: dict[str, str], sid: str | None) -> None:
         """SCOPE-01: list tools, call a read-only one, inspect any 403."""
         if self.open:
-            self._skip("SCOPE-01", "server is open; there is no scope to step up to", applicable=False)
+            self._skip("SCOPE-01", "server is open, so scopes don't apply", applicable=False)
             return
         sess = {"Mcp-Session-Id": sid} if sid else {}
         hdrs = _mcp_headers({**auth, **sess})
@@ -753,16 +772,16 @@ class Scanner:
         listing = _jsonrpc_result(rl)
         tools = ((listing or {}).get("result") or {}).get("tools") if listing else None
         if rl.status != 200 or not isinstance(tools, list):
-            self._skip("SCOPE-01", f"tools/list returned {rl.status}; no tool to call", applicable=False)
+            self._skip("SCOPE-01", f"tools/list returned {rl.status}, so the probe can't pick a tool", applicable=False)
             return
         if not tools:
-            self._skip("SCOPE-01", "server lists no tools", applicable=False)
+            self._skip("SCOPE-01", "the server's tools/list is empty", applicable=False)
             return
         name = self._pick_tool(tools)
         if name is None:
             self._skip(
                 "SCOPE-01",
-                "no read-only tool to call safely (none has readOnlyHint or a list/get/search name); "
+                "couldn't find a tool that's safe to call (one with readOnlyHint or a list/get/search name); "
                 "pass --tool NAME to choose one",
             )
             return
@@ -796,15 +815,14 @@ class Scanner:
                 missing.append("a scope parameter")
             if not ch.params.get("resource_metadata"):
                 missing.append("resource_metadata")
-        if missing:
+        if ch is None or missing:
             self._add(
                 "SCOPE-01",
                 WARN,
-                f"403 for {name!r} lacks " + ", ".join(missing) + "; clients cannot work out what to request",
+                f"403 for {name!r} lacks " + ", ".join(missing) + "; clients can't work out what to request",
                 **ev,
             )
         else:
-            assert ch is not None
             self._add("SCOPE-01", PASS, f"403 for {name!r} asks for scope={ch.params.get('scope')!r}", **ev)
 
     def _end_session(self, sid: str, auth: dict[str, str]) -> None:
@@ -854,6 +872,7 @@ def run(
     """Scan `target`. `stored` is a token-store entry from `mcp-authlab login`; explicit tokens win over it."""
     login_meta: dict[str, Any] | None = None
     foreign_note = None
+    foreign_expired = False
     foreign_known = True
     login_results = None
     if stored and not token:
@@ -868,7 +887,11 @@ def run(
         }
         if not foreign_token:
             if foreign.get("usable") is False:
-                foreign_note = foreign.get("note") or "login minted no usable foreign-audience token"
+                foreign_note = foreign.get("note") or "login didn't mint a usable foreign-audience token"
+            elif tokenstore.is_expired(foreign, skew=0):
+                # An expired token gets a 401 from any server, which would read as a pass on a critical check.
+                foreign_note = "the foreign-audience token has expired and couldn't be refreshed"
+                foreign_expired = True
             else:
                 foreign_token = foreign.get("access_token")
                 foreign_known = bool(foreign.get("audience_known", True))
@@ -884,5 +907,6 @@ def run(
         login_results=login_results,
         tool=tool,
     )
+    s.foreign_note_needs_login = foreign_expired
     results = s.run()
     return build_report(s, results, policy, login_meta)

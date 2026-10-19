@@ -15,8 +15,13 @@ _GRADE_COLOR = {"A": "32", "B": "32", "C": "33", "D": "33", "F": "31"}
 _LEVEL_COLOR = {"Conformant": "32", "Conformant with warnings": "33", "Non-conformant": "33", "Unsafe": "31"}
 FOOTER = (
     "MUST* marks a critical check: one failure is Unsafe and an F on its own. "
-    "Skipped checks say what they need; `mcp-authlab login <url>` unlocks the rest."
+    "Skipped checks say what they need; `mcp-authlab login <url>` runs the rest."
 )
+
+
+def status_symbol(status: str, color: bool) -> str:
+    """The one-character mark for a result status, colored for a terminal when asked."""
+    return _c(_COLOR[status], _SYM[status], color)
 
 
 def _c(code: str, text: str, enabled: bool) -> str:
@@ -218,4 +223,18 @@ def sarif(report: dict[str, Any]) -> str:
     return json.dumps(doc, indent=2)
 
 
-FORMATS = {"text": None, "json": as_json, "markdown": markdown, "sarif": sarif}
+FORMATS = ("text", "json", "markdown", "sarif")
+
+
+def render(
+    report: dict[str, Any], fmt: str, color: bool | None = None, verbose: bool = False, requests: bool = False
+) -> str:
+    if fmt == "json":
+        return as_json(report, requests=requests)
+    if fmt == "markdown":
+        return markdown(report)
+    if fmt == "sarif":
+        return sarif(report)
+    if fmt == "text":
+        return terminal(report, color=color, verbose=verbose)
+    raise ValueError(f"unknown format {fmt!r}")

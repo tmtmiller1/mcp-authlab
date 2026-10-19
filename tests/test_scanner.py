@@ -18,6 +18,9 @@ class ProfileTests(FixtureCase):
                 data = self.scan(name, mode="login")
                 self.assertEqual(statuses(data, "error"), set(), data["results"])
                 self.assertEqual(flagged(data), fixture.EXPECTED_FAILURES[name])
+                # A critical check that slid from fail to warn would still count as flagged; pin the status.
+                for cid in fixture.EXPECTED_FAILURES[name] & set(catalog.CRITICAL_IDS):
+                    self.assertEqual(by_id(data)[cid]["status"], "fail", (name, cid))
 
     def test_profiles_with_an_unreachable_as_scan_with_minted_tokens(self):
         for name in fixture.PROFILES:
@@ -84,7 +87,7 @@ class ProfileTests(FixtureCase):
         state = self.start("reference")
         data = checks.run(state.public_url, token="not-a-token", timeout=5)
         self.assertEqual(by_id(data)["TOK-06"]["status"], "fail")
-        self.assertEqual(by_id(data)["SESS-01"]["message"], "token did not work")
+        self.assertEqual(by_id(data)["SESS-01"]["message"], "the token didn't work")
 
     def test_stateless_server_marks_session_checks_not_applicable(self):
         data = self.scan("reference", flags=["stateless"])
@@ -204,11 +207,11 @@ class LoginTests(FixtureCase):
         self.assertEqual(by_id(data)["TOK-06"]["status"], "pass")
 
     def test_profile_defects_match_the_dataclass(self):
-        names = {f.name for f in fields(fixture.Profile)} - {"name"}
-        self.assertEqual(set(fixture.DEFECTS), names)
-        for f in fields(fixture.Profile):
-            if f.name != "name":
-                self.assertIn(f.type, (bool, "bool"))
+        default = fixture.Profile()
+        for name in fixture.DEFECTS:
+            self.assertIs(getattr(default, name), False, name)
+        self.assertNotIn("name", fixture.DEFECTS)
+        self.assertEqual(len(fixture.DEFECTS), len(fields(fixture.Profile)) - 1)
         with self.assertRaises(SystemExit):
             fixture.profile_from_args("reference", ["no_such_flag"])
         p = fixture.profile_from_args("reference", ["open"])

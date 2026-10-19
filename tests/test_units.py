@@ -239,15 +239,13 @@ class OutputTests(FixtureCase):
         from mcp_authlab import policy
 
         pol = policy.parse('ignore = ["SESS-01"]\ndowngrade = { "ORIG-01" = "SHOULD" }')
-        pol.apply([])
+        results = [catalog.Result.from_dict(r) for r in self.data["results"]]
+        pol.apply(results)
         data = dict(self.data)
-        data["results"] = [dict(r) for r in self.data["results"]]
-        for r in data["results"]:
-            if r["id"] == "SESS-01":
-                r["counted"] = False
-            if r["id"] == "ORIG-01":
-                r["effective_level"] = "SHOULD"
-                r["effective_critical"] = False
+        data["results"] = [r.to_dict() for r in results]
+        by = {r["id"]: r for r in data["results"]}
+        self.assertFalse(by["SESS-01"]["counted"])
+        self.assertEqual((by["ORIG-01"]["effective_level"], by["ORIG-01"]["effective_critical"]), ("SHOULD", False))
         text = report.terminal(data, color=False)
         self.assertIn("ignored by policy", text)
         self.assertIn("SHOULD↓", text)

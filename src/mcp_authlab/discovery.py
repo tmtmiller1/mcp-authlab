@@ -11,7 +11,7 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 def canonical(url: str) -> str:
     """Canonical resource identifier per RFC 8707 section 2 as used by MCP.
 
-    Lowercase scheme and host, no default port, no fragment, no trailing slash.
+    Lowercases the scheme and host and drops the default port, the fragment and any trailing slash.
     """
     p = urlsplit(url.strip())
     scheme = p.scheme.lower()
@@ -22,6 +22,10 @@ def canonical(url: str) -> str:
     netloc = host if (port is None or _DEFAULT_PORTS.get(scheme) == port) else f"{host}:{port}"
     path = p.path.rstrip("/")
     return urlunsplit((scheme, netloc, path, p.query, ""))
+
+
+def is_https_or_loopback(url: str) -> bool:
+    return urlsplit(url).scheme.lower() == "https" or is_loopback(url)
 
 
 def is_loopback(url: str) -> bool:

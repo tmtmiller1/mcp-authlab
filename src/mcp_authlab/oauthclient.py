@@ -9,7 +9,7 @@ different resource so the scan can test audience binding.
 A login signs in twice: once for the server's own token and once for the
 foreign-audience token. The wrong-verifier probe runs on the first code. A
 strict authorization server revokes a code after a failed exchange, which costs
-one more sign-in to get the real token; once that is known, the wrong-redirect
+one more sign-in to get the real token; once that's known, the wrong-redirect
 probe is skipped rather than spending a fourth sign-in, unless `thorough` is
 set. On a loopback authorization server with no browser (the fixture) the
 rounds are free, so `thorough` is on by default there.
@@ -27,11 +27,11 @@ import time
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from . import __version__, discovery, jwtutil
+from . import __version__, discovery, jwtutil, wwwauth
 from .catalog import BY_ID, CATALOG, ERROR, FAIL, LOGIN, PASS, SKIP, WARN, Result
 from .httpclient import Client, Response, TransportError
 
@@ -78,6 +78,8 @@ class LoginOutcome:
             "foreign": {
                 "resource": self.foreign.resource if self.foreign else None,
                 "access_token": self.foreign.access_token if self.foreign else None,
+                "refresh_token": self.foreign.refresh_token if self.foreign else None,
+                "expires_at": self.foreign.expires_at if self.foreign else None,
                 "usable": self.foreign_usable,
                 "audience_known": self.foreign_audience_known,
                 "note": self.foreign_note,
@@ -112,7 +114,10 @@ class _Callback(BaseHTTPRequestHandler):
         srv.deliver(params)
 
 
-class _CallbackServer(HTTPServer):
+class _CallbackServer(ThreadingHTTPServer):
+    # Threaded so an idle connection (browsers open speculative ones) can't hold up the real callback.
+    daemon_threads = True
+
     def __init__(self, port: int = 0):
         super().__init__(("127.0.0.1", port), _Callback)
         self.path = "/callback"
@@ -155,10 +160,6 @@ def _json_body(resp: Response) -> JsonDoc | None:
     except ValueError:
         return None
     return doc if isinstance(doc, dict) else None
-
-
-def _is_https_or_loopback(url: str) -> bool:
-    return urlsplit(url).scheme.lower() == "https" or discovery.is_loopback(url)
 
 
 class Login:
@@ -221,9 +222,7 @@ class Login:
                 {"Accept": "application/json, text/event-stream"},
             )
         except TransportError as e:
-            raise LoginError(f"{self.target} did not answer: {e}") from e
-        from . import wwwauth
-
+            raise LoginError(f"{self.target} didn't answer: {e}") from e
         ch = wwwauth.bearer(challenge.header_all("WWW-Authenticate"))
         candidates: list[str] = []
         if ch and ch.params.get("resource_metadata", "").startswith(("http://", "https://")):
@@ -235,11 +234,11 @@ class Login:
                 break
         if not prm:
             raise LoginError(
-                "no Protected Resource Metadata found; the server does not advertise an authorization server"
+                "couldn't find Protected Resource Metadata, so the server doesn't say where its authorization server is"
             )
         servers = prm.get("authorization_servers")
         if not (isinstance(servers, list) and servers and isinstance(servers[0], str)):
-            raise LoginError("Protected Resource Metadata lists no authorization server")
+            raise LoginError("Protected Resource Metadata doesn't list an authorization server")
         self.issuer = servers[0]
         for _kind, url in discovery.authorization_server_metadata_urls(self.issuer):
             doc = self._fetch_json(url)
@@ -247,7 +246,7 @@ class Login:
                 self.metadata = doc
                 break
         if not self.metadata:
-            raise LoginError(f"no authorization server metadata found for {self.issuer}")
+            raise LoginError(f"couldn't find authorization server metadata for {self.issuer}")
         for key in ("authorization_endpoint", "token_endpoint"):
             if not isinstance(self.metadata.get(key), str):
                 raise LoginError(f"authorization server metadata lacks {key}")
@@ -259,7 +258,7 @@ class Login:
         reg = self.metadata.get("registration_endpoint")
         if not isinstance(reg, str):
             raise LoginError(
-                f"{self.issuer} offers no dynamic registration; pass --client-id with a client registered for "
+                f"{self.issuer} doesn't offer dynamic registration; pass --client-id with a client registered for "
                 f"redirect URI {self.redirect_uri}"
             )
         body = json.dumps(
@@ -343,13 +342,15 @@ class Login:
         if "error" in got:
             raise LoginError(f"authorization server refused: {got.get('error')}: {got.get('error_description', '')}")
         advertised = self.metadata.get("authorization_response_iss_parameter_supported") is True
-        if advertised and got.get("iss") and discovery.canonical(got["iss"]) != discovery.canonical(self.issuer):
+        expected_iss = str(self.metadata.get("issuer", self.issuer))
+        if advertised and got.get("iss") and got["iss"] != expected_iss:
+            # RFC 9207 section 2.4: a simple string comparison against the issuer in the metadata.
             raise LoginError(
-                f"callback iss {got['iss']!r} is not the expected issuer {self.issuer!r}; stopping (RFC 9207)"
+                f"callback iss {got['iss']!r} isn't the expected issuer {expected_iss!r}; stopping (RFC 9207)"
             )
         code = got.get("code")
         if not code:
-            raise LoginError("callback carried no code")
+            raise LoginError("the callback didn't carry a code")
         return code, verifier
 
     def _exchange(self, code: str, verifier: str, resource: str, redirect_uri: str | None = None) -> Response:
@@ -400,8 +401,10 @@ class Login:
         except TransportError as e:
             self._add("ASF-01", ERROR, str(e))
             return
-        ev = {"http_status": resp.status, "location": resp.header("Location")}
         loc = resp.header("Location") or ""
+        # Keep only what the verdict rests on. A failing server put a live authorization code in this URL.
+        loc_q = {k: v[0] for k, v in parse_qs(urlsplit(loc).query).items() if k in ("error", "iss")}
+        ev = {"http_status": resp.status, "redirected_to_callback": loc.startswith(self.redirect_uri), **loc_q}
         if resp.status in (400, 401, 403):
             self._add("ASF-01", PASS, f"{resp.status} without code_challenge", **ev)
         elif resp.status in (301, 302, 303, 307, 308) and loc.startswith(self.redirect_uri):
@@ -417,7 +420,7 @@ class Login:
                 "ASF-01",
                 WARN,
                 f"answered {resp.status} without code_challenge (a login page or a redirect elsewhere); "
-                "this tool cannot see whether the request would be refused after sign-in",
+                "this tool can't see whether the request would be refused after sign-in",
                 **ev,
             )
 
@@ -428,7 +431,7 @@ class Login:
             self._add(
                 "ASF-02",
                 FAIL,
-                "token endpoint issued a token for a wrong code_verifier; PKCE is not enforced",
+                "token endpoint issued a token for a wrong code_verifier, so PKCE isn't enforced",
                 http_status=200,
             )
         elif resp.status in (400, 401):
@@ -476,7 +479,11 @@ class Login:
         return []
 
     def _probe_asf04(self, main: TokenSet, foreign: TokenSet | None) -> tuple[bool, str | None, bool]:
-        """Returns (foreign_usable, note, audience_known)."""
+        """Read the tokens' aud claims. Returns (foreign_usable, note, audience_known).
+
+        The foreign token is usable for TOK-03 when it doesn't name this server: then a resource server that
+        accepts it isn't checking the audience.
+        """
         main_aud = self._aud(main.access_token)
         if main_aud is None:
             r = self._add(
@@ -493,44 +500,55 @@ class Login:
                 self._add(
                     "ASF-04",
                     FAIL,
-                    f"aud={main_aud} does not name the requested resource {self.canonical}",
+                    f"aud={main_aud} doesn't name the requested resource {self.canonical}",
                     aud=main_aud,
                 )
-            return False, "login minted no foreign-audience token", True
+            return False, "login didn't mint a foreign-audience token", True
         f_aud = self._aud(foreign.access_token) or []
         f_canon = {discovery.canonical(a) for a in f_aud}
+        ev = {"aud": main_aud, "foreign_aud": f_aud}
+        names_us = self.canonical in f_canon
         if not bound:
-            self._add(
-                "ASF-04",
-                FAIL,
-                f"aud={main_aud} does not name the requested resource {self.canonical}",
-                aud=main_aud,
-                foreign_aud=f_aud,
-            )
-            return bool(f_canon) and f_canon != canon, None, True
-        if f_canon == canon:
-            self._add(
-                "ASF-04",
-                FAIL,
-                f"the token requested for {foreign.resource} came back with the same aud {main_aud}; "
-                "the authorization server ignores resource= (RFC 8707)",
-                aud=main_aud,
-                foreign_aud=f_aud,
-            )
+            self._add("ASF-04", FAIL, f"aud={main_aud} doesn't name the requested resource {self.canonical}", **ev)
+            return not names_us, None, True
+        if names_us:
+            if f_canon == canon:
+                why = f"came back with the same aud {main_aud}; the authorization server ignores resource= (RFC 8707)"
+            else:
+                why = f"came back with aud={f_aud}, which still names this server"
+            self._add("ASF-04", FAIL, f"the token requested for {foreign.resource} {why}", **ev)
+            what = "ignored resource= and minted" if f_canon == canon else "bound"
             return (
                 False,
-                "the authorization server ignored resource= and minted the second token for the same audience, so "
-                "there is no foreign token to test with (see ASF-04)",
+                f"the authorization server {what} the second token for this server too, so the scan doesn't have "
+                "a foreign token to test with (see ASF-04)",
                 True,
             )
-        self._add(
-            "ASF-04", PASS, f"aud={main_aud}; the second token carries aud={f_aud}", aud=main_aud, foreign_aud=f_aud
-        )
+        if not f_canon:
+            self._add(
+                "ASF-04",
+                FAIL,
+                f"the token requested for {foreign.resource} carries no aud claim, so it isn't bound to any resource",
+                **ev,
+            )
+            return True, None, True
+        if discovery.canonical(foreign.resource) not in f_canon:
+            self._add(
+                "ASF-04",
+                WARN,
+                f"the token requested for {foreign.resource} came back with aud={f_aud}; this server's own token is "
+                "bound correctly, but the authorization server didn't use the requested resource",
+                **ev,
+            )
+            return True, None, True
+        self._add("ASF-04", PASS, f"aud={main_aud}; the second token carries aud={f_aud}", **ev)
         return True, None, True
 
     def _probe_asf05(self, main: TokenSet) -> TokenSet:
         if not main.refresh_token:
-            r = self._add("ASF-05", SKIP, "no refresh token was issued, so there is nothing to rotate")
+            r = self._add(
+                "ASF-05", SKIP, "the authorization server didn't issue a refresh token, so rotation doesn't apply"
+            )
             r.applicable = False
             return main
         fields = {
@@ -550,7 +568,9 @@ class Login:
             return main
         new_rt = doc.get("refresh_token")
         if not isinstance(new_rt, str):
-            self._add("ASF-05", WARN, "refresh response carried no refresh_token; the old one stays valid indefinitely")
+            self._add(
+                "ASF-05", WARN, "the refresh response didn't include a refresh_token, so the old one stays in use"
+            )
             new_rt = main.refresh_token
         elif new_rt == main.refresh_token:
             self._add(
@@ -566,7 +586,7 @@ class Login:
         problems = []
         for key in ("issuer", "authorization_endpoint", "token_endpoint", "registration_endpoint"):
             v = self.metadata.get(key)
-            if isinstance(v, str) and not _is_https_or_loopback(v):
+            if isinstance(v, str) and not discovery.is_https_or_loopback(v):
                 problems.append(f"{key}={v}")
         advertised = self.metadata.get("authorization_response_iss_parameter_supported") is True
         if advertised and any(i is None for i in self.callback_iss):
@@ -586,7 +606,8 @@ class Login:
         t.start()
         try:
             self.register()
-            assert self.client_id
+            if not self.client_id:
+                raise LoginError("registration finished without a client_id")
             self._probe_asf01()
 
             if self.thorough is None:
@@ -609,7 +630,7 @@ class Login:
             self.log("got an access token for " + self.canonical)
 
             # Round 2: a token for another resource. The wrong-redirect probe runs here unless it would cost
-            # another sign-in and the caller did not ask for that.
+            # another sign-in and the caller didn't ask for that.
             foreign_res = self.foreign_resource or self.issuer
             foreign: TokenSet | None = None
             try:
@@ -636,10 +657,10 @@ class Login:
             except LoginError as e:
                 self.log(f"could not mint a foreign-audience token: {e}")
                 if not any(r.check.id == "ASF-03" for r in self.results):
-                    self._add("ASF-03", SKIP, f"no second authorization code to test with: {e}")
+                    self._add("ASF-03", SKIP, f"couldn't get a second authorization code to test with: {e}")
             usable, note, known = self._probe_asf04(main, foreign)
             if foreign is None and note is None:
-                note = "login minted no foreign-audience token"
+                note = "login didn't mint a foreign-audience token"
             main = self._probe_asf05(main)
             self._probe_asf06()
         finally:
@@ -647,39 +668,55 @@ class Login:
             cb.server_close()
         for c in CATALOG:
             if c.phase == LOGIN and not any(r.check.id == c.id for r in self.results):
-                self._add(c.id, SKIP, "login did not reach this probe")
+                self._add(c.id, SKIP, "login stopped before this probe")
+        foreign_usable = usable and foreign is not None
         return LoginOutcome(
-            self.canonical,
-            self.issuer,
-            self.metadata,
-            self.client_id or "",
-            main,
-            foreign,
-            usable and foreign is not None,
-            note if not (usable and foreign is not None) else None,
-            known,
-            self.results,
+            canonical=self.canonical,
+            issuer=self.issuer,
+            metadata=self.metadata,
+            client_id=self.client_id or "",
+            main=main,
+            foreign=foreign,
+            foreign_usable=foreign_usable,
+            foreign_note=None if foreign_usable else note,
+            foreign_audience_known=known,
+            results=self.results,
         )
 
 
-def refresh(entry: dict[str, Any], http: Client | None = None) -> dict[str, Any] | None:
-    """Refresh a stored token set in place. Returns the updated entry, or None when it could not."""
-    rt, ep, cid = entry.get("refresh_token"), entry.get("token_endpoint"), entry.get("client_id")
-    if not (isinstance(rt, str) and isinstance(ep, str) and isinstance(cid, str)):
-        return None
-    http = http or Client()
+def _refresh_into(target: dict[str, Any], resource: str, token_endpoint: str, client_id: str, http: Client) -> bool:
+    """Swap target's access token for a fresh one using its refresh token. True when that worked."""
+    rt = target.get("refresh_token")
+    if not isinstance(rt, str):
+        return False
+    fields = {"grant_type": "refresh_token", "refresh_token": rt, "client_id": client_id, "resource": resource}
     try:
-        resp = http.post_form(
-            ep, {"grant_type": "refresh_token", "refresh_token": rt, "client_id": cid, "resource": entry["resource"]}
-        )
+        resp = http.post_form(token_endpoint, fields)
     except TransportError:
-        return None
+        return False
     doc = _json_body(resp) or {}
     if resp.status != 200 or not isinstance(doc.get("access_token"), str):
-        return None
-    entry["access_token"] = doc["access_token"]
+        return False
+    target["access_token"] = doc["access_token"]
     if isinstance(doc.get("refresh_token"), str):
-        entry["refresh_token"] = doc["refresh_token"]
+        target["refresh_token"] = doc["refresh_token"]
     exp = doc.get("expires_in")
-    entry["expires_at"] = time.time() + float(exp) if isinstance(exp, (int, float)) else None
-    return entry
+    target["expires_at"] = time.time() + float(exp) if isinstance(exp, (int, float)) else None
+    return True
+
+
+def refresh(entry: dict[str, Any], http: Client | None = None, foreign: bool = False) -> dict[str, Any] | None:
+    """Refresh a stored entry's access token, or its foreign-audience token with foreign=True.
+
+    Returns the updated entry, or None when the refresh didn't work.
+    """
+    ep, cid = entry.get("token_endpoint"), entry.get("client_id")
+    if not (isinstance(ep, str) and isinstance(cid, str)):
+        return None
+    http = http or Client()
+    if foreign:
+        f = entry.get("foreign")
+        if not isinstance(f, dict) or not isinstance(f.get("resource"), str):
+            return None
+        return entry if _refresh_into(f, f["resource"], ep, cid, http) else None
+    return entry if _refresh_into(entry, str(entry["resource"]), ep, cid, http) else None

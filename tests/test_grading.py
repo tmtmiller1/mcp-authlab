@@ -31,7 +31,7 @@ class GradeRules(unittest.TestCase):
     def test_open_server_is_f_without_being_unsafe(self):
         g = grade(results(**{"CHAL-01": FAIL}))
         self.assertEqual((g.level, g.letter), ("Non-conformant", "F"))
-        self.assertIn("server does not challenge unauthenticated requests", g.reasons)
+        self.assertIn("server doesn't challenge unauthenticated requests", g.reasons)
 
     def test_must_failure_caps_at_c(self):
         g = grade(results(**{"PRM-01": FAIL}))

@@ -14,13 +14,8 @@ from .policy import PolicyError
 
 
 def _render(args: argparse.Namespace, data: dict[str, Any]) -> str:
-    if args.format == "json":
-        return report.as_json(data, requests=args.requests)
-    if args.format == "markdown":
-        return report.markdown(data)
-    if args.format == "sarif":
-        return report.sarif(data)
-    return report.terminal(data, color=(False if args.no_color else None), verbose=args.verbose)
+    color = False if args.no_color else None
+    return report.render(data, args.format, color=color, verbose=args.verbose, requests=args.requests)
 
 
 def _load_policy(path: str | None) -> policy.Policy | None:
@@ -35,17 +30,27 @@ def _load_policy(path: str | None) -> policy.Policy | None:
 def _stored_tokens(url: str, use_store: bool) -> dict[str, Any] | None:
     if not use_store:
         return None
-    entry = tokenstore.get(discovery.canonical(url))
-    if entry and tokenstore.is_expired(entry) and entry.get("refresh_token"):
-        refreshed = oauthclient.refresh(entry)
-        if refreshed:
-            tokenstore.put(discovery.canonical(url), refreshed)
-            entry = refreshed
+    canonical = discovery.canonical(url)
+    entry = tokenstore.get(canonical)
+    if not entry:
+        return None
+    changed = False
+    if tokenstore.is_expired(entry):
+        if oauthclient.refresh(entry):
+            changed = True
         else:
-            print(
-                "stored access token has expired and could not be refreshed; run `mcp-authlab login` again",
-                file=sys.stderr,
-            )
+            print("the stored access token has expired; run `mcp-authlab login` again", file=sys.stderr)
+    foreign = entry.get("foreign")
+    if isinstance(foreign, dict) and foreign.get("access_token") and tokenstore.is_expired(foreign):
+        if oauthclient.refresh(entry, foreign=True):
+            changed = True
+        else:
+            print("the foreign-audience token has expired, so TOK-03 will be skipped", file=sys.stderr)
+    if changed:
+        try:
+            tokenstore.put(canonical, entry)
+        except tokenstore.TokenStoreError as e:
+            print(f"couldn't save the refreshed tokens: {e}", file=sys.stderr)
     return entry
 
 
@@ -102,12 +107,16 @@ def _cmd_login(args: argparse.Namespace) -> int:
     except oauthclient.LoginError as e:
         print(f"login failed: {e}", file=sys.stderr)
         return 1
-    path = tokenstore.put(outcome.canonical, outcome.to_store())
+    try:
+        path = tokenstore.put(outcome.canonical, outcome.to_store())
+    except tokenstore.TokenStoreError as e:
+        print(f"login worked, but the tokens couldn't be saved: {e}", file=sys.stderr)
+        return 1
     color = False if args.no_color else sys.stdout.isatty()
     print(f"logged in to {outcome.canonical} via {outcome.issuer}")
     print("authorization server flow checks:")
     for r in outcome.results:
-        sym = report._c(report._COLOR[r.status], report._SYM[r.status], color)
+        sym = report.status_symbol(r.status, color)
         print(f"  {sym} {r.check.id:<9}{r.check.level:<7}{r.check.title}")
         if r.status != "pass":
             print(f"              {r.message}")
@@ -116,16 +125,21 @@ def _cmd_login(args: argparse.Namespace) -> int:
             f"foreign-audience token minted for {outcome.foreign.resource if outcome.foreign else ''}; TOK-03 will run"
         )
     else:
-        print(f"no usable foreign-audience token: {outcome.foreign_note}")
+        print(f"TOK-03 won't run: {outcome.foreign_note}")
     print(f"tokens saved to {path} (mode 0600). Now run: mcp-authlab scan {args.url}")
     return 0
 
 
 def _cmd_logout(args: argparse.Namespace) -> int:
-    if tokenstore.remove(discovery.canonical(args.url)):
+    try:
+        removed = tokenstore.remove(discovery.canonical(args.url))
+    except tokenstore.TokenStoreError as e:
+        print(f"mcp-authlab: {e}", file=sys.stderr)
+        return 1
+    if removed:
         print("removed stored tokens for " + discovery.canonical(args.url))
         return 0
-    print("no stored tokens for " + discovery.canonical(args.url), file=sys.stderr)
+    print("not logged in to " + discovery.canonical(args.url), file=sys.stderr)
     return 1
 
 
@@ -187,11 +201,11 @@ def main(argv: list[str] | None = None) -> int:
         "--policy", metavar="FILE", help="TOML policy: fail_under, ignore, downgrade (see examples/policy.toml)"
     )
     s.add_argument("--tool", help="the tool SCOPE-01 calls; by default a read-only one chosen from tools/list")
-    s.add_argument("--format", choices=list(report.FORMATS), default="text")
+    s.add_argument("--format", choices=report.FORMATS, default="text")
     s.add_argument("--output", "-o", help="write the report to a file instead of stdout")
     s.add_argument("--fail-under", metavar="GRADE", help="exit 2 if the grade is below this letter (for CI), e.g. B")
     s.add_argument("--timeout", type=float, default=10.0)
-    s.add_argument("--insecure", action="store_true", help="do not verify TLS certificates")
+    s.add_argument("--insecure", action="store_true", help="skip TLS certificate checks")
     s.add_argument("--requests", action="store_true", help="include every HTTP exchange in JSON output")
     s.add_argument("--verbose", "-v", action="store_true", help="show evidence for passing checks too")
     s.add_argument("--no-color", action="store_true")
@@ -220,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         help="run the redirect_uri probe even when the authorization server revokes codes after a failed "
         "exchange, which costs one more sign-in (default on loopback with --no-browser)",
     )
-    lg.add_argument("--insecure", action="store_true", help="do not verify TLS certificates")
+    lg.add_argument("--insecure", action="store_true", help="skip TLS certificate checks")
     lg.add_argument("--no-color", action="store_true")
     lg.set_defaults(func=_cmd_login)
 
@@ -228,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     lo.add_argument("url")
     lo.set_defaults(func=_cmd_logout)
 
-    f = sub.add_parser("fixture", help="run the reference server (or a deliberately broken profile) locally")
+    f = sub.add_parser("fixture", help="run the reference server, or one of its broken profiles, locally")
     f.add_argument("--profile", default="reference", help=", ".join(fixture.PROFILES))
     f.add_argument("--flag", action="append", help="turn on one defect flag (repeatable), e.g. --flag skip_audience")
     f.add_argument("--host", default="127.0.0.1")
