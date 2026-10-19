@@ -63,6 +63,7 @@ class Profile:
     drop_iss: bool = False  # advertises iss but omits it from the callback
     opaque_tokens: bool = False  # issues random-string access tokens instead of JWTs
     issuer_trailing_slash: bool = False  # metadata issuer differs from the advertised URL by a trailing slash
+    strict_resource: bool = False  # token endpoint only issues tokens for this server (rejects other resources)
 
 
 DEFECTS: tuple[str, ...] = tuple(f.name for f in fields(Profile) if f.name != "name")
@@ -430,10 +431,6 @@ class Handler(BaseHTTPRequestHandler):
         if claims is None:
             self._send(status, headers=headers)
             return
-        ver = self.headers.get("MCP-Protocol-Version")
-        if ver and ver not in (PROTOCOL_VERSION, "2025-03-26", "2025-11-25") and not self.p.ignore_version:
-            self._text(400, "unsupported protocol version")
-            return
         length = int(self.headers.get("Content-Length") or 0)
         try:
             msg = json.loads(self.rfile.read(length) or b"null")
@@ -442,6 +439,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not isinstance(msg, dict):
             self._text(400, "expected a JSON-RPC message")
+            return
+        # The header is required on requests after initialize; initialize negotiates the version in its body.
+        ver = self.headers.get("MCP-Protocol-Version")
+        supported = (PROTOCOL_VERSION, "2025-03-26", "2025-11-25")
+        if msg.get("method") != "initialize" and ver and ver not in supported and not self.p.ignore_version:
+            self._text(400, "unsupported protocol version")
             return
         self._mcp(cast(dict[str, Any], msg), claims)
 
@@ -634,6 +637,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if rec["client_id"] != client_id:
             self._token_error("invalid_grant", "code was issued to another client")
+            return
+        requested = f.get("resource") or rec["resource"]
+        if self.p.strict_resource and requested and discovery.canonical(requested) != self.st.resource:
+            self._token_error("invalid_target", "this authorization server only issues tokens for its MCP server")
             return
         if not self.p.skip_redirect_check and f.get("redirect_uri") != rec["redirect_uri"]:
             self._token_error("invalid_grant", "redirect_uri doesn't match the authorization request")

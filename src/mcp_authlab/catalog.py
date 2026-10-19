@@ -113,7 +113,8 @@ _ORIG_DISPUTE = (
     "still passes; the pushback is from operators who skip the header entirely because their clients are CLIs."
 )
 _VER_DISPUTE = (
-    "The transports spec says a server MUST respond 400 to an unsupported MCP-Protocol-Version. Operators "
+    "The transports spec says a server MUST respond 400 when a request after initialize carries an unsupported "
+    "MCP-Protocol-Version. Operators "
     "prefer to answer with the newest version they support so older clients keep working. The spec text is "
     "clear, so this stays MUST; use a policy downgrade if your organisation accepts version tolerance."
 )
@@ -391,7 +392,7 @@ CATALOG: list[Check] = [
     ),
     Check(
         id="VER-01",
-        title="Unsupported MCP-Protocol-Version is refused with 400",
+        title="Unsupported MCP-Protocol-Version after initialize is refused with 400",
         level="MUST",
         critical=False,
         cite="Transports, Protocol Version Header",

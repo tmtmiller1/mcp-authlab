@@ -674,20 +674,32 @@ class Scanner:
             if osid:
                 self._end_session(osid, auth)
 
+        self._version_probe(auth)
+
+    def _version_probe(self, auth: dict[str, str]) -> None:
+        """VER-01. The spec requires the header on requests after initialize, so open a session the normal way
+        and send a ping with an unsupported version. initialize itself negotiates the version in its body."""
         try:
-            rv = self._post_initialize({**auth, "MCP-Protocol-Version": "1999-01-01"})
+            ri = self._post_initialize(auth)
+            vsid = ri.header("Mcp-Session-Id")
+            sess = {"Mcp-Session-Id": vsid} if vsid else {}
+            self.client.post_json(
+                self.target, _rpc("notifications/initialized", rid=None), _mcp_headers({**auth, **sess})
+            )
+            rv = self.client.post_json(
+                self.target, _rpc("ping", rid=4), _mcp_headers({**auth, **sess, "MCP-Protocol-Version": "1999-01-01"})
+            )
         except TransportError as e:
             self._add("VER-01", ERROR, str(e))
+            return
+        if rv.status == 400:
+            self._add("VER-01", PASS, "400 for a ping after initialize", **_summ(rv))
+        elif rv.status in (200, 202):
+            self._add("VER-01", WARN, "server answered a ping with an unsupported MCP-Protocol-Version", **_summ(rv))
         else:
-            if rv.status == 400:
-                self._add("VER-01", PASS, "400", **_summ(rv))
-            elif rv.status in (200, 202):
-                self._add("VER-01", WARN, "server ignored an unsupported MCP-Protocol-Version", **_summ(rv))
-            else:
-                self._add("VER-01", WARN, f"expected 400, got {rv.status}", **_summ(rv))
-            vsid = rv.header("Mcp-Session-Id")
-            if vsid:
-                self._end_session(vsid, auth)
+            self._add("VER-01", WARN, f"expected 400, got {rv.status}", **_summ(rv))
+        if vsid:
+            self._end_session(vsid, auth)
 
     def _session_probes(self, sid: str, auth: dict[str, str]) -> None:
         if self.open:

@@ -32,7 +32,7 @@
 | SESS-01 | MUST\* | A session ID alone doesn't authenticate | `--token` or `login` | [Security Best Practices, Session Hijacking: servers MUST NOT use sessions for authentication](https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#session-hijacking) |
 | SESS-02 | SHOULD | Session IDs are long, random, and non-sequential | `--token` or `login` | [Transports, Session Management; Security Best Practices, Session Hijacking](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#session-management) |
 | ORIG-01 | MUST | Request with a hostile Origin header is refused | `--token` or `login` | [Transports, Security Warning: servers MUST validate the Origin header](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#security-warning) |
-| VER-01 | MUST | Unsupported MCP-Protocol-Version is refused with 400 | `--token` or `login` | [Transports, Protocol Version Header](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#protocol-version-header) |
+| VER-01 | MUST | Unsupported MCP-Protocol-Version after initialize is refused with 400 | `--token` or `login` | [Transports, Protocol Version Header](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#protocol-version-header) |
 
 MUST\* is a critical check: one failure makes the conformance level Unsafe and the grade F.
 
@@ -42,4 +42,4 @@ These stay MUST because the spec says MUST. A [policy file](grading.md#policy-fi
 
 **ORIG-01** Request with a hostile Origin header is refused. The transports spec says servers MUST validate Origin to stop DNS rebinding. Operators point out that non-browser clients don't send Origin, so a server that only checks Origin when it's present is also defending the browser case. This check sends a hostile Origin, so a server that validates when present still passes; the pushback is from operators who skip the header entirely because their clients are CLIs.
 
-**VER-01** Unsupported MCP-Protocol-Version is refused with 400. The transports spec says a server MUST respond 400 to an unsupported MCP-Protocol-Version. Operators prefer to answer with the newest version they support so older clients keep working. The spec text is clear, so this stays MUST; use a policy downgrade if your organisation accepts version tolerance.
+**VER-01** Unsupported MCP-Protocol-Version after initialize is refused with 400. The transports spec says a server MUST respond 400 when a request after initialize carries an unsupported MCP-Protocol-Version. Operators prefer to answer with the newest version they support so older clients keep working. The spec text is clear, so this stays MUST; use a policy downgrade if your organisation accepts version tolerance.

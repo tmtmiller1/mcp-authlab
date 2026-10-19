@@ -11,7 +11,7 @@ Tests whether an [MCP](https://modelcontextprotocol.io) server refuses the token
 ```
 $ scripts/demo.sh passthrough
 
-mcp-authlab 0.2.0  ·  spec 2025-06-18
+mcp-authlab 0.2.1  ·  spec 2025-06-18
 target   http://127.0.0.1:8765/mcp
 coverage 33/33
 level    Unsafe   grade F   score 81/100

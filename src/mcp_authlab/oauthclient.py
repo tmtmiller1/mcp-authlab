@@ -656,8 +656,18 @@ class Login:
                 self.log("got a token for " + foreign_res)
             except LoginError as e:
                 self.log(f"could not mint a foreign-audience token: {e}")
-                if not any(r.check.id == "ASF-03" for r in self.results):
+                asf3 = next((r for r in self.results if r.check.id == "ASF-03"), None)
+                if asf3 is None:
                     self._add("ASF-03", SKIP, f"couldn't get a second authorization code to test with: {e}")
+                elif asf3.status != FAIL:
+                    # The token endpoint refused the correct request for this resource too, so its refusal of the
+                    # wrong redirect_uri may have been about the resource. Only a token issued anyway is conclusive.
+                    asf3.status = SKIP
+                    asf3.evidence["probe_answer"] = asf3.message
+                    asf3.message = (
+                        "inconclusive: the token endpoint also refused the correct request for the second resource, "
+                        f"so its answer to the wrong redirect_uri doesn't show a redirect check ({e})"
+                    )
             usable, note, known = self._probe_asf04(main, foreign)
             if foreign is None and note is None:
                 note = "login didn't mint a foreign-audience token"

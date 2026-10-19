@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (2026-10-19)
+
+- VER-01 sends its unsupported `MCP-Protocol-Version` on a ping after `initialize`, where the spec requires the header. 0.2.0 sent it on `initialize` itself and flagged servers that were right to accept it there, including the official TypeScript SDK's example server.
+- ASF-03 is marked inconclusive when the authorization server refuses the second resource outright. A refusal there could be about the resource rather than the redirect, so 0.2.0 could report a pass it hadn't earned. A token issued despite the wrong `redirect_uri` still fails. The fixture's new `strict_resource` flag covers this.
+- `scripts/demo.sh` runs straight from a fresh clone, without installing the package first, and says so plainly when `python3` is older than 3.11.
+- The example GitHub Actions workflow creates its token directory with mode 0700 and notes that it reads `authlab.toml` from your repo.
+
 ## 0.2.0 (2026-10-19)
 
 - `mcp-authlab login <url>` signs you in to a server's authorization server with the real authorization code flow (PKCE S256, dynamic registration or `--client-id`, loopback redirect, RFC 8707 `resource`, RFC 9207 `iss` checked) and stores the tokens in `~/.config/mcp-authlab/tokens.json` with mode 0600. `scan` picks them up on its own, so the critical token and session checks run for anyone who can log in.

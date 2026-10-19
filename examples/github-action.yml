@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install mcp-authlab==0.2.0
+      - run: pip install mcp-authlab==0.2.1
       - name: restore stored tokens
         if: env.TOKENS != ''
         run: |

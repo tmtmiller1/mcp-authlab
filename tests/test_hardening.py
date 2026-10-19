@@ -188,6 +188,52 @@ class IssuerExactMatch(FixtureCase):
         self.assertIn("RFC 9207", str(cm.exception))
 
 
+class ProtocolVersion(FixtureCase):
+    def test_version_header_is_probed_after_initialize(self):
+        # The reference server accepts any header on initialize, as the spec allows, and still passes VER-01.
+        state = self.start("reference")
+        req = urllib.request.Request(
+            state.public_url,
+            data=checks.initialize_payload(),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "Authorization": f"Bearer {state.mint()}",
+                "MCP-Protocol-Version": "1999-01-01",
+            },
+        )
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+        data = checks.run(state.public_url, token=state.mint(), timeout=5)
+        ver = by_id(data)["VER-01"]
+        self.assertEqual(ver["status"], "pass")
+        self.assertIn("after initialize", ver["message"])
+
+    def test_a_server_that_ignores_the_header_warns(self):
+        data = self.scan("reference", ["ignore_version"], mode="dev")
+        self.assertEqual(by_id(data)["VER-01"]["status"], "warn")
+
+
+class StrictResourceServer(FixtureCase):
+    def test_refused_second_resource_makes_the_redirect_probe_inconclusive(self):
+        state = self.start("reference", ["strict_resource"])
+        out = self.login(state)
+        asf = {r.check.id: r for r in out.results}
+        self.assertEqual(asf["ASF-03"].status, SKIP)
+        self.assertIn("inconclusive", asf["ASF-03"].message)
+        self.assertFalse(out.foreign_usable)
+        data = checks.run(state.public_url, stored=out.to_store(), timeout=5)
+        self.assertEqual(by_id(data)["TOK-03"]["status"], "skip")
+        self.assertIn("TOK-03", data["coverage"]["critical_not_run"])
+
+    def test_a_token_issued_despite_the_wrong_redirect_still_fails(self):
+        state = self.start("reference", ["strict_resource", "skip_redirect_check"])
+        state.profile.strict_resource = False  # let the second resource through so the redirect probe gets a token
+        out = self.login(state)
+        self.assertEqual({r.check.id: r.status for r in out.results}["ASF-03"], FAIL)
+
+
 class CallbackServer(unittest.TestCase):
     def test_an_idle_connection_does_not_hold_up_the_callback(self):
         cb = oauthclient._CallbackServer(0)
