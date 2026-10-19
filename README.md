@@ -1,6 +1,7 @@
 # mcp-authlab
 
 [![ci](https://github.com/tmtmiller1/mcp-authlab/actions/workflows/ci.yml/badge.svg)](https://github.com/tmtmiller1/mcp-authlab/actions/workflows/ci.yml)
+[![pypi](https://img.shields.io/pypi/v/mcp-authlab)](https://pypi.org/project/mcp-authlab/)
 [![python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](pyproject.toml)
 [![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -62,10 +63,10 @@ Those three checks (TOK-02, TOK-03 and SESS-01, marked `MUST*`) are critical. On
 ## Install
 
 ```
-pipx install git+https://github.com/tmtmiller1/mcp-authlab@v0.2.0
+pipx install mcp-authlab
 ```
 
-or install the wheel from the [latest release](https://github.com/tmtmiller1/mcp-authlab/releases/latest), or `pip install -e .` from a checkout. Python 3.11 or newer is the whole requirement.
+or `pip install mcp-authlab`, or `pip install -e .` from a checkout. Python 3.11 or newer is the whole requirement.
 
 ## Use
 
