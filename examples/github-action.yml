@@ -1,7 +1,7 @@
 # Gate a deployment on the authorization grade of a staging MCP server, and send the findings to code scanning.
 # Run `mcp-authlab login https://mcp.staging.example.com/mcp` once on a workstation and copy the entry from
 # ~/.config/mcp-authlab/tokens.json into the MCP_AUTHLAB_TOKENS_JSON secret: the job then runs every check,
-# including the three critical ones. Without it the scan still runs the unauthenticated checks.
+# including the three critical ones. Without that secret the scan runs the unauthenticated checks only.
 name: mcp-auth-conformance
 on:
   workflow_dispatch:

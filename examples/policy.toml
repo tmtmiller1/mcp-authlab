@@ -11,7 +11,7 @@ fail_under = "B"
 ignore = ["VER-01"]
 
 # Checks counted at a lower level than the spec gives them. The value is "MUST" or "SHOULD".
-# A downgraded check is never critical. ORIG-01 (hostile Origin refused) is MUST in the spec;
+# A downgraded check stops being critical. ORIG-01 (hostile Origin refused) is MUST in the spec;
 # operators whose clients are all CLIs sometimes accept it as a SHOULD.
 [downgrade]
 "ORIG-01" = "SHOULD"

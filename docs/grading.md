@@ -13,7 +13,7 @@ Each result has a `status`:
 | `pass` | the check ran and the server did what the spec says |
 | `fail` | the check ran and the server broke a MUST or SHOULD |
 | `warn` | the check ran and found something short of a failure: a SHOULD the server skipped, or a MUST answered the wrong way without an outright break (loopback http, a 200 where a 400 was due) |
-| `skip` | the check could not run. `message` says why; `applicable` is false when the server has nothing to test here (a stateless server has no sessions) |
+| `skip` | the check could not run. `message` says why; `applicable` is false when the server lacks the feature the check tests (a stateless server doesn't issue session IDs) |
 | `error` | the request itself failed (timeout, connection refused) |
 
 Only `pass`, `fail` and `warn` results take part in grading. A result with `counted: false` was ignored by a policy file: it still prints, but the rules below skip it.
@@ -29,7 +29,7 @@ Walk these rules top down and stop at the first match:
 3. Any counted `fail` or `warn` at all: **Conformant with warnings**.
 4. Otherwise: **Conformant**.
 
-So a server that only misses SHOULD items, or that runs on plain http on localhost, is "Conformant with warnings". One critical failure is "Unsafe" whatever else passes.
+So a server that only misses SHOULD items, or that runs on plain http on localhost, is "Conformant with warnings". One critical failure is "Unsafe" even if everything else passes.
 
 ## Score
 
@@ -41,13 +41,13 @@ Each counted result that ran gets a weight:
 | MUST | 10 |
 | SHOULD | 3 |
 
-A `pass` earns the full weight. A `warn` on a MUST check earns half (5); a `warn` on a SHOULD check earns nothing. A `fail` earns nothing.
+A `pass` earns the full weight. A `warn` on a MUST check earns half (5); a `warn` on a SHOULD check earns 0. A `fail` earns 0.
 
 ```
 score = round(100 × earned / total)
 ```
 
-`total` is the sum of weights of results that ran, so skipped checks are left out of the denominator and an unauthenticated scan isn't penalised for what it couldn't test. (That is why the coverage line is the first thing in every report.) With no results at all the score is 0.
+`total` is the sum of weights of results that ran, so skipped and errored checks are left out of the denominator and an unauthenticated scan isn't penalised for what it couldn't test. That's why the coverage line is the first thing in every report. With no results at all the score is 0.
 
 ## Letter grade
 
@@ -65,6 +65,7 @@ Below 50 is F. Then apply, in order:
 1. Any counted critical `fail`: **F**.
 2. CHAL-01 counted and `fail` (the server answered an unauthenticated request with something other than 401): **F**.
 3. Any counted MUST `fail`: the letter is capped at **C**. A score of 98 with one MUST failure is a C.
+4. Any counted critical check with status `error`: the letter is capped at **C** too. The request for a forged token or a session replay timed out or dropped, so the scan couldn't confirm the server is safe. The coverage line lists these checks as not run.
 
 ## Worked example
 
@@ -78,7 +79,7 @@ A JSON report with these counted results (everything else skipped):
 | PRM-01 | MUST | no | fail | 10 | 0 |
 | TOK-02 | MUST | yes | pass | 20 | 20 |
 
-total 53, earned 40, score = round(100 × 40 / 53) = 75. Score says C. PRM-01 is a MUST failure, so the cap applies and the letter stays C. Level: no critical failure, one MUST failure, so **Non-conformant**.
+total 53, earned 40, score = round(100 × 40 / 53) = 75. Score says C. PRM-01 is a MUST failure, so the cap applies and the letter stays C. Level: PRM-01 is a MUST failure and isn't critical, so **Non-conformant**.
 
 Now ignore PRM-01 with a policy: total 43, earned 40, score 93, letter B, level **Conformant with warnings** (CHAL-03 still warns).
 
@@ -89,10 +90,10 @@ Now ignore PRM-01 with a policy: total 43, earned 40, score 93, letter B, level 
 ```toml
 fail_under = "B"                       # exit 2 below this letter; --fail-under on the command line wins
 ignore = ["VER-01"]                    # still runs and prints, stops counting
-downgrade = { "ORIG-01" = "SHOULD" }   # counts as SHOULD; never critical
+downgrade = { "ORIG-01" = "SHOULD" }   # counts as SHOULD and stops being critical
 ```
 
-[examples/policy.toml](../examples/policy.toml) explains each key. Two catalog entries carry a `disputed` note for exactly this purpose: ORIG-01 (Origin validation) and VER-01 (protocol version refusal) are MUST in the spec and often argued about by operators. They stay MUST here because the spec says so; the policy file is where your organisation records its own decision.
+[examples/policy.toml](../examples/policy.toml) explains each key. Two catalog entries carry a `disputed` note for this reason: ORIG-01 (Origin validation) and VER-01 (protocol version refusal) are MUST in the spec and often argued about by operators. They stay MUST here because the spec says so; the policy file is where your organisation records its own decision.
 
 ## Reading the report's own summary
 

@@ -21,7 +21,7 @@ from mcp_authlab import __version__, checks  # noqa: E402
 
 NOTE = (
     "Unauthenticated scans only: the tool sends a handful of requests (an unauthenticated initialize, the metadata "
-    "documents, two invalid tokens) and never logs in. Runs every Monday from GitHub Actions. If your server is "
+    "documents, two invalid tokens) and doesn't log in. It runs every Monday from GitHub Actions. If your server is "
     "listed and you want it removed or a finding corrected, "
     "[open an issue](https://github.com/tmtmiller1/mcp-authlab/issues)."
 )
@@ -45,7 +45,7 @@ def scan_all(date: str) -> dict[str, Any]:
 def _findings(report: dict[str, Any]) -> str:
     rows = [r for r in report["results"] if r["status"] in ("fail", "warn", "error")]
     if not rows:
-        return "nothing to report"
+        return "every check that ran passed"
     return "<br>".join(f"**{r['id']}** {r['message']}".replace("|", "\\|") for r in rows)
 
 
@@ -70,7 +70,7 @@ def render(results: dict[str, Any], history: list[str]) -> str:
     lines += [
         "",
         "Coverage counts the checks that ran out of those that apply. The critical checks named as not run need a "
-        "login, which the registry never does; `mcp-authlab login <url>` runs them for your own server.",
+        "login, and the registry only scans unauthenticated; `mcp-authlab login <url>` runs them for your own server.",
         "",
         "Raw results: " + ", ".join(f"[{d}](results/{d}.json)" for d in history),
         "",
