@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import time
+from typing import Any
 
 
 def _b64(data: bytes) -> str:
@@ -17,25 +18,34 @@ def _unb64(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def encode(claims: dict, key: bytes | None, alg: str = "HS256") -> str:
+Claims = dict[str, Any]
+
+
+def _segment(obj: object) -> str:
+    return _b64(json.dumps(obj, separators=(",", ":")).encode())
+
+
+def encode(claims: Claims, key: bytes | None, alg: str = "HS256") -> str:
     header = {"alg": alg, "typ": "JWT"}
-    signing_input = f"{_b64(json.dumps(header, separators=(',', ':')).encode())}.{_b64(json.dumps(claims, separators=(',', ':')).encode())}"
+    signing_input = f"{_segment(header)}.{_segment(claims)}"
     if alg == "none" or key is None:
         return signing_input + "."
     sig = hmac.new(key, signing_input.encode("ascii"), hashlib.sha256).digest()
     return f"{signing_input}.{_b64(sig)}"
 
 
-def decode_unverified(token: str) -> tuple[dict, dict, str]:
+def decode_unverified(token: str) -> tuple[Claims, Claims, str]:
     parts = token.split(".")
     if len(parts) != 3:
         raise ValueError("not a JWS compact serialization")
     header = json.loads(_unb64(parts[0]))
     claims = json.loads(_unb64(parts[1]))
+    if not isinstance(header, dict) or not isinstance(claims, dict):
+        raise ValueError("header and claims must be JSON objects")
     return header, claims, parts[2]
 
 
-def verify_hs256(token: str, key: bytes) -> dict:
+def verify_hs256(token: str, key: bytes) -> Claims:
     parts = token.split(".")
     if len(parts) != 3:
         raise ValueError("malformed")
@@ -46,7 +56,10 @@ def verify_hs256(token: str, key: bytes) -> dict:
     if not hmac.compare_digest(expected, _unb64(parts[2])):
         raise ValueError("bad signature")
     claims = json.loads(_unb64(parts[1]))
-    if claims.get("exp") is not None and time.time() >= claims["exp"]:
+    if not isinstance(claims, dict):
+        raise ValueError("claims must be a JSON object")
+    exp = claims.get("exp")
+    if isinstance(exp, (int, float)) and time.time() >= exp:
         raise ValueError("expired")
     return claims
 

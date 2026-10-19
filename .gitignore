@@ -5,3 +5,5 @@ dist/
 *.egg-info/
 .venv/
 reports/
+.mypy_cache/
+.ruff_cache/

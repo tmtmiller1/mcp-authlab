@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mcp-authlab"
 version = "0.1.0"
-description = "Black-box conformance scanner for MCP server authorization (OAuth 2.1, RFC 9728, RFC 8414, RFC 8707). Scans a live server, grades it, fails CI."
+description = "Conformance scanner for MCP server authorization (OAuth 2.1, RFC 9728, RFC 8414, RFC 8707). Logs in, scans a live server, grades it, fails CI."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -31,3 +31,15 @@ mcp-authlab = "mcp_authlab.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "UP", "SIM", "I"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["src"]

@@ -6,9 +6,11 @@ import http.client
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from email.message import Message
+from typing import Any
 
 
 class TransportError(Exception):
@@ -49,12 +51,20 @@ class Exchange:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D401
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Message,
+        newurl: str,
+    ) -> urllib.request.Request | None:
         return None
 
 
 class _KeepErrors(urllib.request.HTTPErrorProcessor):
-    def http_response(self, request, response):
+    def http_response(self, request: urllib.request.Request, response: Any) -> Any:
         return response
 
     https_response = http_response
@@ -91,13 +101,13 @@ class Client:
                 data = resp.read()
                 elapsed = int((time.monotonic() - start) * 1000)
                 entry.status = resp.status
-                entry.response_headers = {k: v for k, v in resp.headers.items()}
+                entry.response_headers = dict(resp.headers.items())
                 return Response(resp.status, resp.headers, data, url, elapsed)
         except urllib.error.HTTPError as e:  # only raised for codes urllib still treats as errors
             data = e.read()
             elapsed = int((time.monotonic() - start) * 1000)
             entry.status = e.code
-            entry.response_headers = {k: v for k, v in e.headers.items()}
+            entry.response_headers = dict(e.headers.items())
             return Response(e.code, e.headers, data, url, elapsed)
         except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
             entry.error = f"{type(e).__name__}: {e}"
@@ -110,3 +120,8 @@ class Client:
         hdrs = {"Content-Type": "application/json"}
         hdrs.update(headers or {})
         return self.request("POST", url, hdrs, payload)
+
+    def post_form(self, url: str, fields: dict[str, str], headers: dict[str, str] | None = None) -> Response:
+        hdrs = {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}
+        hdrs.update(headers or {})
+        return self.request("POST", url, hdrs, urllib.parse.urlencode(fields).encode())

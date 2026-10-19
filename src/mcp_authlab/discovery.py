@@ -1,4 +1,5 @@
-"""Well-known URL construction per RFC 9728 (protected resource) and RFC 8414 / OIDC Discovery (authorization server)."""
+"""Well-known URL construction per RFC 9728 (protected resource) and RFC 8414 / OIDC Discovery (authorization
+server)."""
 
 from __future__ import annotations
 
@@ -8,7 +9,10 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
 def canonical(url: str) -> str:
-    """Canonical resource identifier per RFC 8707 section 2 as used by MCP: lowercase scheme/host, no default port, no fragment, no trailing slash."""
+    """Canonical resource identifier per RFC 8707 section 2 as used by MCP.
+
+    Lowercase scheme and host, no default port, no fragment, no trailing slash.
+    """
     p = urlsplit(url.strip())
     scheme = p.scheme.lower()
     host = (p.hostname or "").lower()
