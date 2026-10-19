@@ -1,20 +1,38 @@
-# Gate a deployment on the authorization grade of a staging MCP server.
-# Put a valid staging token in the MCP_AUTHLAB_TOKEN secret to unlock the session, origin and query-string checks.
+# Gate a deployment on the authorization grade of a staging MCP server, and send the findings to code scanning.
+# Run `mcp-authlab login https://mcp.staging.example.com/mcp` once on a workstation and copy the entry from
+# ~/.config/mcp-authlab/tokens.json into the MCP_AUTHLAB_TOKENS_JSON secret: the job then runs every check,
+# including the three critical ones. Without it the scan still runs the unauthenticated checks.
 name: mcp-auth-conformance
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1"
+permissions:
+  contents: read
+  security-events: write
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install git+https://github.com/tmtmiller1/mcp-authlab
-      - run: mcp-authlab scan https://mcp.staging.example.com/mcp --fail-under B --format markdown -o report.md
+      - name: restore stored tokens
+        if: ${{ secrets.MCP_AUTHLAB_TOKENS_JSON != '' }}
+        run: |
+          mkdir -p ~/.config/mcp-authlab
+          printf '%s' "$TOKENS" > ~/.config/mcp-authlab/tokens.json
+          chmod 600 ~/.config/mcp-authlab/tokens.json
         env:
-          MCP_AUTHLAB_TOKEN: ${{ secrets.MCP_AUTHLAB_TOKEN }}
+          TOKENS: ${{ secrets.MCP_AUTHLAB_TOKENS_JSON }}
+      - run: mcp-authlab scan https://mcp.staging.example.com/mcp --policy authlab.toml --format markdown -o report.md
       - if: always()
         run: cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: mcp-authlab scan https://mcp.staging.example.com/mcp --format sarif -o report.sarif
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: report.sarif

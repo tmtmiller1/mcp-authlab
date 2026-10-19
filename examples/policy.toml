@@ -1,0 +1,17 @@
+# An organisation's own bar for `mcp-authlab scan --policy policy.toml`.
+# Every key is optional. Check IDs are the ones `mcp-authlab checks` lists.
+# How ignores and downgrades change the grade is spelled out in docs/grading.md.
+
+# Exit 2 when the letter grade is below this. `--fail-under` on the command line wins over it.
+fail_under = "B"
+
+# Checks that still run and still print, but stop counting toward the level and the grade.
+# VER-01 (unsupported MCP-Protocol-Version gets 400) is MUST in the transports spec; teams that
+# answer old clients with the newest version they support instead often choose to ignore it.
+ignore = ["VER-01"]
+
+# Checks counted at a lower level than the spec gives them. The value is "MUST" or "SHOULD".
+# A downgraded check is never critical. ORIG-01 (hostile Origin refused) is MUST in the spec;
+# operators whose clients are all CLIs sometimes accept it as a SHOULD.
+[downgrade]
+"ORIG-01" = "SHOULD"

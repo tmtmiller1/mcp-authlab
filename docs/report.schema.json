@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tmtmiller1/mcp-authlab/docs/report.schema.json",
+  "title": "mcp-authlab scan report",
+  "description": "The JSON written by `mcp-authlab scan --format json`. Every grade can be recomputed from `results` with docs/grading.md.",
+  "type": "object",
+  "required": [
+    "tool", "version", "spec", "target", "canonical", "scanned_at", "coverage", "conformance", "grade", "score",
+    "reasons", "critical_failures", "must_failures", "warnings", "ignored", "counts", "policy", "login", "results"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "tool": { "const": "mcp-authlab" },
+    "version": { "type": "string" },
+    "spec": { "type": "string", "description": "MCP specification version the checks cite" },
+    "target": { "type": "string", "description": "the URL as given" },
+    "canonical": { "type": "string", "description": "RFC 8707 canonical resource identifier" },
+    "scanned_at": { "type": "string", "description": "UTC, ISO 8601" },
+    "coverage": {
+      "type": "object",
+      "required": ["ran", "applicable", "critical_not_run", "login_helps", "line"],
+      "additionalProperties": false,
+      "properties": {
+        "ran": { "type": "integer", "minimum": 0 },
+        "applicable": { "type": "integer", "minimum": 0 },
+        "critical_not_run": { "type": "array", "items": { "type": "string" } },
+        "login_helps": { "type": "boolean" },
+        "line": { "type": "string" }
+      }
+    },
+    "conformance": { "enum": ["Unsafe", "Non-conformant", "Conformant with warnings", "Conformant"] },
+    "grade": { "enum": ["A", "B", "C", "D", "F"] },
+    "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "reasons": { "type": "array", "items": { "type": "string" } },
+    "critical_failures": { "type": "array", "items": { "type": "string" } },
+    "must_failures": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "ignored": { "type": "array", "items": { "type": "string" } },
+    "counts": {
+      "type": "object",
+      "required": ["pass", "fail", "warn", "skip", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "warn": { "type": "integer", "minimum": 0 },
+        "skip": { "type": "integer", "minimum": 0 },
+        "error": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "policy": {
+      "type": ["object", "null"],
+      "required": ["source", "fail_under", "ignore", "downgrade"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": ["string", "null"] },
+        "fail_under": { "type": ["string", "null"] },
+        "ignore": { "type": "array", "items": { "type": "string" } },
+        "downgrade": { "type": "object", "additionalProperties": { "enum": ["MUST", "SHOULD"] } }
+      }
+    },
+    "login": {
+      "type": ["object", "null"],
+      "description": "present when the tokens came from `mcp-authlab login`",
+      "required": ["issuer", "client_id", "logged_in_at", "foreign_resource"],
+      "additionalProperties": false,
+      "properties": {
+        "issuer": { "type": ["string", "null"] },
+        "client_id": { "type": ["string", "null"] },
+        "logged_in_at": { "type": ["string", "null"] },
+        "foreign_resource": { "type": ["string", "null"] }
+      }
+    },
+    "results": { "type": "array", "items": { "$ref": "#/$defs/result" } },
+    "requests": {
+      "type": "array",
+      "description": "only with --requests",
+      "items": {
+        "type": "object",
+        "required": ["method", "url", "request_headers", "status", "response_headers", "error"],
+        "additionalProperties": false,
+        "properties": {
+          "method": { "type": "string" },
+          "url": { "type": "string" },
+          "request_headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "status": { "type": ["integer", "null"] },
+          "response_headers": { "type": "object", "additionalProperties": { "type": "string" } },
+          "error": { "type": ["string", "null"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "result": {
+      "type": "object",
+      "required": [
+        "id", "title", "level", "critical", "effective_level", "effective_critical", "counted", "applicable",
+        "phase", "status", "message", "cite", "url", "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "level": { "enum": ["MUST", "SHOULD"], "description": "what the spec says" },
+        "critical": { "type": "boolean", "description": "a failure is Unsafe and F on its own" },
+        "effective_level": { "enum": ["MUST", "SHOULD"], "description": "after any policy downgrade" },
+        "effective_critical": { "type": "boolean" },
+        "counted": { "type": "boolean", "description": "false when a policy ignores the check" },
+        "applicable": { "type": "boolean", "description": "false when the server has nothing to test here" },
+        "phase": { "enum": ["scan", "login"] },
+        "status": { "enum": ["pass", "fail", "warn", "skip", "error"] },
+        "message": { "type": "string" },
+        "cite": { "type": "string" },
+        "url": { "type": "string" },
+        "evidence": { "type": "object" }
+      }
+    }
+  }
+}

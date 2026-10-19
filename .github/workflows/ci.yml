@@ -3,6 +3,17 @@ on:
   push:
   pull_request:
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e . ruff mypy
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: mypy src
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -15,8 +26,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e .
       - run: python -m unittest discover -s tests -v
-      - name: reference server grades A
-        run: scripts/demo.sh reference --fail-under A --no-color
+      - name: reference server logs in and grades A with every check run
+        run: scripts/demo.sh reference --fail-under A --no-color | tee /dev/stderr | grep -q "^coverage 33/33"
       - name: broken profiles are caught
         run: |
           set -e
@@ -29,6 +40,7 @@ jobs:
           mkdir -p reports
           for p in reference legacy weak-as passthrough sloppy open mismatch; do
             scripts/demo.sh "$p" --format markdown -o "reports/$p.md" || true
+            scripts/demo.sh "$p" --format sarif -o "reports/$p.sarif" || true
           done
       - uses: actions/upload-artifact@v4
         if: matrix.python == '3.12'

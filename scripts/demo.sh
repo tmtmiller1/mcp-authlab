@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
-# Start a fixture profile, scan it with a valid token and a foreign-audience token, stop it.
+# Start a fixture profile, log in to it without a browser, scan it with the stored tokens, stop it.
+# Profiles whose authorization server is unreachable (mismatch) fall back to tokens minted by /dev/token.
 # Usage: scripts/demo.sh [profile] [extra scan args...]
 set -euo pipefail
 profile="${1:-reference}"; shift || true
 port="${PORT:-8765}"
-python3 -m mcp_authlab fixture --profile "$profile" --port "$port" --print-token >"/tmp/mcp-authlab-$profile.token" 2>/dev/null &
+work="$(mktemp -d)"
+trap 'kill "${pid:-}" 2>/dev/null; wait "${pid:-}" 2>/dev/null; rm -rf "$work"' EXIT
+export MCP_AUTHLAB_TOKENS="$work/tokens.json"
+python3 -m mcp_authlab fixture --profile "$profile" --port "$port" --auto-consent --print-token >"$work/token" 2>/dev/null &
 pid=$!
-trap 'kill $pid 2>/dev/null || true' EXIT
-for _ in $(seq 1 50); do [ -s "/tmp/mcp-authlab-$profile.token" ] && break; sleep 0.1; done
-token="$(head -1 "/tmp/mcp-authlab-$profile.token")"
-foreign="$(curl -s "http://127.0.0.1:$port/dev/token?aud=https://other.example/mcp")"
-python3 -m mcp_authlab scan "http://127.0.0.1:$port/mcp" --token "$token" --foreign-token "$foreign" "$@"
+for _ in $(seq 1 50); do [ -s "$work/token" ] && break; sleep 0.1; done
+url="http://127.0.0.1:$port/mcp"
+# Profiles without dynamic registration accept any client_id, which is what --client-id is for.
+if python3 -m mcp_authlab login "$url" --no-browser --no-color >"$work/login.txt" 2>&1 \
+   || python3 -m mcp_authlab login "$url" --no-browser --no-color --client-id demo-client >"$work/login.txt" 2>&1; then
+  python3 -m mcp_authlab scan "$url" "$@"
+else
+  echo "login unavailable for profile $profile ($(tail -1 "$work/login.txt")); scanning with minted tokens" >&2
+  token="$(head -1 "$work/token")"
+  foreign="$(curl -s "http://127.0.0.1:$port/dev/token?aud=https://other.example/mcp")"
+  python3 -m mcp_authlab scan "$url" --token "$token" --foreign-token "$foreign" "$@"
+fi
