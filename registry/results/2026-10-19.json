@@ -11,7 +11,7 @@
         "spec": "2025-06-18",
         "target": "https://mcp.linear.app/mcp",
         "canonical": "https://mcp.linear.app/mcp",
-        "scanned_at": "2026-10-19T19:39:15Z",
+        "scanned_at": "2026-10-19T21:10:12Z",
         "coverage": {
           "ran": 19,
           "applicable": 33,
@@ -224,7 +224,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "2 scopes, none over-broad",
+            "message": "2 scopes, all specific",
             "cite": "Security Best Practices, Scope Minimization; MCP Authorization (draft), Refresh Tokens",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#scope-minimization",
             "evidence": {
@@ -236,7 +236,7 @@
           },
           {
             "id": "PRM-06",
-            "title": "Metadata does not advertise bearer tokens in the query string",
+            "title": "Metadata keeps bearer tokens out of the query string",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -245,7 +245,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "no query-string bearer method advertised",
+            "message": "bearer_methods_supported leaves out 'query'",
             "cite": "MCP Authorization, Token Requirements; RFC 6750 section 2.3",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-requirements",
             "evidence": {}
@@ -549,7 +549,7 @@
           },
           {
             "id": "TOK-05",
-            "title": "Valid token in the query string is not accepted",
+            "title": "A valid token in the query string is refused",
             "level": "MUST",
             "critical": false,
             "effective_level": "MUST",
@@ -585,7 +585,7 @@
           },
           {
             "id": "SCOPE-01",
-            "title": "A tool call the token cannot make gets 403 with error=\"insufficient_scope\" and a scope hint",
+            "title": "A tool call the token can't make gets 403 with error=\"insufficient_scope\" and a scope hint",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -603,7 +603,7 @@
           },
           {
             "id": "SESS-01",
-            "title": "Session ID does not substitute for authentication",
+            "title": "A session ID alone doesn't authenticate",
             "level": "MUST",
             "critical": true,
             "effective_level": "MUST",
@@ -685,7 +685,7 @@
         "spec": "2025-06-18",
         "target": "https://mcp.notion.com/mcp",
         "canonical": "https://mcp.notion.com/mcp",
-        "scanned_at": "2026-10-19T19:39:16Z",
+        "scanned_at": "2026-10-19T21:10:13Z",
         "coverage": {
           "ran": 19,
           "applicable": 33,
@@ -898,7 +898,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "1 scopes, none over-broad",
+            "message": "1 scopes, all specific",
             "cite": "Security Best Practices, Scope Minimization; MCP Authorization (draft), Refresh Tokens",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#scope-minimization",
             "evidence": {
@@ -909,7 +909,7 @@
           },
           {
             "id": "PRM-06",
-            "title": "Metadata does not advertise bearer tokens in the query string",
+            "title": "Metadata keeps bearer tokens out of the query string",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -918,7 +918,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "no query-string bearer method advertised",
+            "message": "bearer_methods_supported leaves out 'query'",
             "cite": "MCP Authorization, Token Requirements; RFC 6750 section 2.3",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-requirements",
             "evidence": {}
@@ -1222,7 +1222,7 @@
           },
           {
             "id": "TOK-05",
-            "title": "Valid token in the query string is not accepted",
+            "title": "A valid token in the query string is refused",
             "level": "MUST",
             "critical": false,
             "effective_level": "MUST",
@@ -1258,7 +1258,7 @@
           },
           {
             "id": "SCOPE-01",
-            "title": "A tool call the token cannot make gets 403 with error=\"insufficient_scope\" and a scope hint",
+            "title": "A tool call the token can't make gets 403 with error=\"insufficient_scope\" and a scope hint",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -1276,7 +1276,7 @@
           },
           {
             "id": "SESS-01",
-            "title": "Session ID does not substitute for authentication",
+            "title": "A session ID alone doesn't authenticate",
             "level": "MUST",
             "critical": true,
             "effective_level": "MUST",
@@ -1358,7 +1358,7 @@
         "spec": "2025-06-18",
         "target": "https://mcp.sentry.dev/mcp",
         "canonical": "https://mcp.sentry.dev/mcp",
-        "scanned_at": "2026-10-19T19:39:16Z",
+        "scanned_at": "2026-10-19T21:10:14Z",
         "coverage": {
           "ran": 19,
           "applicable": 33,
@@ -1462,7 +1462,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "warn",
-            "message": "no scope parameter; clients fall back to scopes_supported or request nothing",
+            "message": "the 401 doesn't say which scopes to request, so clients fall back to scopes_supported or ask for a token without scopes",
             "cite": "MCP Authorization (draft), Scope Selection Strategy; RFC 6750 section 3",
             "url": "https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-selection-strategy",
             "evidence": {
@@ -1578,7 +1578,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "5 scopes, none over-broad",
+            "message": "5 scopes, all specific",
             "cite": "Security Best Practices, Scope Minimization; MCP Authorization (draft), Refresh Tokens",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#scope-minimization",
             "evidence": {
@@ -1593,7 +1593,7 @@
           },
           {
             "id": "PRM-06",
-            "title": "Metadata does not advertise bearer tokens in the query string",
+            "title": "Metadata keeps bearer tokens out of the query string",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -1602,7 +1602,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "no query-string bearer method advertised",
+            "message": "bearer_methods_supported leaves out 'query'",
             "cite": "MCP Authorization, Token Requirements; RFC 6750 section 2.3",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-requirements",
             "evidence": {}
@@ -1906,7 +1906,7 @@
           },
           {
             "id": "TOK-05",
-            "title": "Valid token in the query string is not accepted",
+            "title": "A valid token in the query string is refused",
             "level": "MUST",
             "critical": false,
             "effective_level": "MUST",
@@ -1942,7 +1942,7 @@
           },
           {
             "id": "SCOPE-01",
-            "title": "A tool call the token cannot make gets 403 with error=\"insufficient_scope\" and a scope hint",
+            "title": "A tool call the token can't make gets 403 with error=\"insufficient_scope\" and a scope hint",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -1960,7 +1960,7 @@
           },
           {
             "id": "SESS-01",
-            "title": "Session ID does not substitute for authentication",
+            "title": "A session ID alone doesn't authenticate",
             "level": "MUST",
             "critical": true,
             "effective_level": "MUST",
@@ -2042,7 +2042,7 @@
         "spec": "2025-06-18",
         "target": "https://mcp.asana.com/sse",
         "canonical": "https://mcp.asana.com/sse",
-        "scanned_at": "2026-10-19T19:39:17Z",
+        "scanned_at": "2026-10-19T21:10:15Z",
         "coverage": {
           "ran": 19,
           "applicable": 33,
@@ -2147,7 +2147,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "warn",
-            "message": "no scope parameter; clients fall back to scopes_supported or request nothing",
+            "message": "the 401 doesn't say which scopes to request, so clients fall back to scopes_supported or ask for a token without scopes",
             "cite": "MCP Authorization (draft), Scope Selection Strategy; RFC 6750 section 3",
             "url": "https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-selection-strategy",
             "evidence": {
@@ -2261,7 +2261,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "1 scopes, none over-broad",
+            "message": "1 scopes, all specific",
             "cite": "Security Best Practices, Scope Minimization; MCP Authorization (draft), Refresh Tokens",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#scope-minimization",
             "evidence": {
@@ -2272,7 +2272,7 @@
           },
           {
             "id": "PRM-06",
-            "title": "Metadata does not advertise bearer tokens in the query string",
+            "title": "Metadata keeps bearer tokens out of the query string",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -2281,7 +2281,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "no query-string bearer method advertised",
+            "message": "bearer_methods_supported leaves out 'query'",
             "cite": "MCP Authorization, Token Requirements; RFC 6750 section 2.3",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-requirements",
             "evidence": {}
@@ -2386,7 +2386,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "warn",
-            "message": "authorization_response_iss_parameter_supported is not true for: https://mcp.asana.com",
+            "message": "authorization_response_iss_parameter_supported isn't true for: https://mcp.asana.com",
             "cite": "MCP Authorization (draft), Authorization Response Validation",
             "url": "https://modelcontextprotocol.io/specification/draft/basic/authorization#authorization-response-validation",
             "evidence": {}
@@ -2585,7 +2585,7 @@
           },
           {
             "id": "TOK-05",
-            "title": "Valid token in the query string is not accepted",
+            "title": "A valid token in the query string is refused",
             "level": "MUST",
             "critical": false,
             "effective_level": "MUST",
@@ -2621,7 +2621,7 @@
           },
           {
             "id": "SCOPE-01",
-            "title": "A tool call the token cannot make gets 403 with error=\"insufficient_scope\" and a scope hint",
+            "title": "A tool call the token can't make gets 403 with error=\"insufficient_scope\" and a scope hint",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -2639,7 +2639,7 @@
           },
           {
             "id": "SESS-01",
-            "title": "Session ID does not substitute for authentication",
+            "title": "A session ID alone doesn't authenticate",
             "level": "MUST",
             "critical": true,
             "effective_level": "MUST",
@@ -2721,7 +2721,7 @@
         "spec": "2025-06-18",
         "target": "https://api.githubcopilot.com/mcp/",
         "canonical": "https://api.githubcopilot.com/mcp",
-        "scanned_at": "2026-10-19T19:39:18Z",
+        "scanned_at": "2026-10-19T21:10:17Z",
         "coverage": {
           "ran": 18,
           "applicable": 33,
@@ -2830,7 +2830,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "warn",
-            "message": "no scope parameter; clients fall back to scopes_supported or request nothing",
+            "message": "the 401 doesn't say which scopes to request, so clients fall back to scopes_supported or ask for a token without scopes",
             "cite": "MCP Authorization (draft), Scope Selection Strategy; RFC 6750 section 3",
             "url": "https://modelcontextprotocol.io/specification/draft/basic/authorization#scope-selection-strategy",
             "evidence": {
@@ -3002,7 +3002,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "10 scopes, none over-broad",
+            "message": "10 scopes, all specific",
             "cite": "Security Best Practices, Scope Minimization; MCP Authorization (draft), Refresh Tokens",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/security_best_practices#scope-minimization",
             "evidence": {
@@ -3022,7 +3022,7 @@
           },
           {
             "id": "PRM-06",
-            "title": "Metadata does not advertise bearer tokens in the query string",
+            "title": "Metadata keeps bearer tokens out of the query string",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -3031,7 +3031,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "pass",
-            "message": "no query-string bearer method advertised",
+            "message": "bearer_methods_supported leaves out 'query'",
             "cite": "MCP Authorization, Token Requirements; RFC 6750 section 2.3",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#token-requirements",
             "evidence": {}
@@ -3120,7 +3120,7 @@
             "applicable": true,
             "phase": "scan",
             "status": "warn",
-            "message": "no automatic client registration path for: https://github.com/login/oauth; every client needs a pre-registered client_id",
+            "message": "clients have to be registered by hand for: https://github.com/login/oauth (neither dynamic registration nor Client ID Metadata Documents is offered)",
             "cite": "MCP Authorization, Dynamic Client Registration; draft, Client Registration",
             "url": "https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization#dynamic-client-registration",
             "evidence": {}
@@ -3329,7 +3329,7 @@
           },
           {
             "id": "TOK-05",
-            "title": "Valid token in the query string is not accepted",
+            "title": "A valid token in the query string is refused",
             "level": "MUST",
             "critical": false,
             "effective_level": "MUST",
@@ -3365,7 +3365,7 @@
           },
           {
             "id": "SCOPE-01",
-            "title": "A tool call the token cannot make gets 403 with error=\"insufficient_scope\" and a scope hint",
+            "title": "A tool call the token can't make gets 403 with error=\"insufficient_scope\" and a scope hint",
             "level": "SHOULD",
             "critical": false,
             "effective_level": "SHOULD",
@@ -3383,7 +3383,7 @@
           },
           {
             "id": "SESS-01",
-            "title": "Session ID does not substitute for authentication",
+            "title": "A session ID alone doesn't authenticate",
             "level": "MUST",
             "critical": true,
             "effective_level": "MUST",
