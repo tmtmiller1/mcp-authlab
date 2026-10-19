@@ -1,0 +1,22 @@
+# Public MCP endpoints the weekly registry scan covers, unauthenticated only.
+# To be removed or corrected, open an issue: https://github.com/tmtmiller1/mcp-authlab/issues
+
+[[endpoint]]
+name = "Linear"
+url = "https://mcp.linear.app/mcp"
+
+[[endpoint]]
+name = "Notion"
+url = "https://mcp.notion.com/mcp"
+
+[[endpoint]]
+name = "Sentry"
+url = "https://mcp.sentry.dev/mcp"
+
+[[endpoint]]
+name = "Asana"
+url = "https://mcp.asana.com/sse"
+
+[[endpoint]]
+name = "GitHub"
+url = "https://api.githubcopilot.com/mcp/"
