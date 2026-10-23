@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-authlab"
-version = "0.2.1"
+version = "0.2.2"
 description = "Conformance scanner for MCP server authorization (OAuth 2.1, RFC 9728, RFC 8414, RFC 8707). Logs in, scans a live server, grades it, fails CI."
 readme = "README.md"
 license = "MIT"

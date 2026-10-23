@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 (2026-10-23)
+
+- The README's comparison table now notes the official conformance suite's open server-auth work: audience checks proposed in issue #78, and DPoP server checks in review. There are no code changes.
+
 ## 0.2.1 (2026-10-19)
 
 - VER-01 sends its unsupported `MCP-Protocol-Version` on a ping after `initialize`, where the spec requires the header. 0.2.0 sent it on `initialize` itself and flagged servers that were right to accept it there, including the official TypeScript SDK's example server.
